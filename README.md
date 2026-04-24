@@ -4,6 +4,8 @@ A lightweight Tauri desktop app for viewing local Codex token usage, session tre
 
 ![Codex Token Viewer screenshot](./docs/images/app-screenshot.png)
 
+Current release targets: Windows and macOS.
+
 ## What It Does
 
 Codex Token Viewer reads local Codex session logs from `~/.codex/sessions/*.jsonl` and turns them into a small desktop dashboard.
@@ -55,6 +57,31 @@ Built desktop artifacts are generated under:
 
 - `src-tauri/target/release/bundle/msi`
 - `src-tauri/target/release/bundle/nsis`
+- `src-tauri/target/release/bundle/dmg`
+- `src-tauri/target/release/bundle/macos`
+
+## GitHub Automation
+
+This repository includes two GitHub Actions workflows:
+
+- `CI`: runs tests and verifies the app builds on pushes and pull requests
+- `Release`: builds Windows and macOS bundles and uploads them to GitHub Releases when you push a version tag like `v1.0.0`
+
+Example release flow:
+
+```bash
+git tag v1.0.0
+git push origin main
+git push origin v1.0.0
+```
+
+After the tag is pushed, GitHub Actions will build the Windows and macOS installers and attach them to a new Release.
+
+## Platform Notes
+
+- Windows release artifacts are generated as `.msi` and `setup.exe`
+- macOS release artifacts are generated as `.dmg` and `.app`
+- macOS signing and notarization are not configured yet, so Gatekeeper warnings may still appear on first launch
 
 ## How Data Loading Works
 
