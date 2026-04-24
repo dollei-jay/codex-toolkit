@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Token Viewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="widget">
+        <div class="chrome-glow" aria-hidden="true"></div>
+
+        <header class="topbar" data-tauri-drag-region>
+          <div class="heading">
+            <h1>Codex Token Viewer</h1>
+            <p id="updated-at">Last refresh --</p>
+          </div>
+          <div class="actions">
+            <button id="refresh-btn" class="icon-btn" type="button" aria-label="Refresh">
+              <span aria-hidden="true">&#x21bb;</span>
+            </button>
+            <button id="settings-btn" class="icon-btn" type="button" aria-label="Settings">
+              <span aria-hidden="true">&#9881;</span>
+            </button>
+          </div>
+        </header>
+
+        <section id="status-banner" class="status-banner" aria-live="polite">
+          <span id="status-badge" class="status-badge">Waiting</span>
+          <span id="status-detail" class="status-detail">Local Codex session logs</span>
+          <button
+            id="privacy-toggle"
+            class="privacy-toggle"
+            type="button"
+            aria-label="Toggle privacy mode"
+            title="Toggle privacy mode"
+          >
+            <svg
+              id="privacy-toggle-icon"
+              class="privacy-toggle-icon"
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+            >
+              <path
+                id="privacy-eye-open"
+                d="M1.5 12s3.8-6 10.5-6 10.5 6 10.5 6-3.8 6-10.5 6S1.5 12 1.5 12Z M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"
+              />
+              <path
+                id="privacy-eye-closed"
+                d="M3 5.5 21 18.5 M9.4 9.8A3.5 3.5 0 0 0 14.2 14.6 M6.2 7.8C3.5 9.5 1.8 12 1.8 12s3.8 6 10.2 6c2.1 0 4-.5 5.5-1.3 M10.1 6.2A12 12 0 0 1 12 6c6.4 0 10.2 6 10.2 6a17 17 0 0 1-2.9 3.5"
+              />
+            </svg>
+          </button>
+        </section>
+
+        <section id="settings-panel" class="settings-panel is-hidden">
+          <div class="settings-row">
+            <div>
+              <strong>Autostart</strong>
+              <small>Launch the widget after sign-in.</small>
+            </div>
+            <label class="switch" for="autostart-toggle">
+              <input id="autostart-toggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <strong>Snap to edges</strong>
+              <small>Snap when the widget is close to a screen edge.</small>
+            </div>
+            <label class="switch" for="snap-toggle">
+              <input id="snap-toggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+
+          <label class="settings-field" for="log-dir-input">
+            <span class="field-label">Codex session log directory</span>
+            <input
+              id="log-dir-input"
+              class="text-input"
+              type="text"
+              placeholder="Default: ~/.codex/sessions"
+              spellcheck="false"
+            />
+          </label>
+
+          <div class="settings-grid">
+            <label class="settings-field" for="refresh-interval-select">
+              <span class="field-label">Auto refresh</span>
+              <select id="refresh-interval-select" class="select-input">
+                <option value="15000">15 seconds</option>
+                <option value="30000">30 seconds</option>
+                <option value="45000">45 seconds</option>
+                <option value="60000">60 seconds</option>
+                <option value="0">Manual only</option>
+              </select>
+            </label>
+
+            <label class="settings-field" for="summary-mode-select">
+              <span class="field-label">Main token card</span>
+              <select id="summary-mode-select" class="select-input">
+                <option value="session">Current session</option>
+                <option value="last">Last response</option>
+              </select>
+            </label>
+          </div>
+
+          <p class="settings-note">
+            Source is local Codex session logs. This is not the OpenAI API Usage endpoint and not a remote ChatGPT Plus dashboard.
+          </p>
+
+          <div class="settings-meta">
+            <span id="source-text">Source: local Codex session logs</span>
+            <span id="plan-text">Plan --</span>
+          </div>
+        </section>
+
+        <div class="content-scroll">
+          <section class="section section-bars">
+            <h2>24 Hour Trend</h2>
+            <div id="daily-bars" class="bar-row" aria-label="24 hour trend"></div>
+          </section>
+
+          <section class="section section-line">
+            <h2>7 Day Trend</h2>
+            <div class="line-card">
+              <svg viewBox="0 0 280 88" class="trend-line" aria-hidden="true">
+                <path
+                  id="weekly-shadow"
+                  d=""
+                  fill="none"
+                  stroke="rgba(76, 116, 245, 0.14)"
+                  stroke-width="8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  id="weekly-path"
+                  d=""
+                  fill="none"
+                  stroke="url(#lineGradient)"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <defs>
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#4e7dff" />
+                    <stop offset="100%" stop-color="#2d5ef5" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div class="weekday-row">
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+                <span>Sun</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="stats">
+            <article class="stat-card stat-card-primary">
+              <strong id="primary-percent">--</strong>
+              <span>5 Hour Window</span>
+              <small id="primary-meta">Resets --</small>
+              <div class="meter" aria-hidden="true">
+                <span id="primary-meter-fill" class="meter-fill"></span>
+              </div>
+              <em id="primary-remaining" class="stat-footnote">Remaining --</em>
+            </article>
+            <article class="stat-card stat-card-secondary">
+              <strong id="secondary-percent">--</strong>
+              <span>Weekly Window</span>
+              <small id="secondary-meta">Resets --</small>
+              <div class="meter" aria-hidden="true">
+                <span id="secondary-meter-fill" class="meter-fill"></span>
+              </div>
+              <em id="secondary-remaining" class="stat-footnote">Remaining --</em>
+            </article>
+          </section>
+
+          <section class="usage-strip" aria-label="Usage details">
+            <article class="usage-chip">
+              <span id="summary-tokens-label" class="usage-label">Current session tokens</span>
+              <strong id="total-tokens">--</strong>
+            </article>
+            <article class="usage-chip">
+              <span class="usage-label">Last response tokens</span>
+              <strong id="last-tokens">--</strong>
+            </article>
+            <article class="usage-chip usage-chip-wide">
+              <span class="usage-label">Last usage event</span>
+              <strong id="sync-time">--</strong>
+            </article>
+            <article class="usage-chip">
+              <span class="usage-label">Context window</span>
+              <strong id="context-window">--</strong>
+            </article>
+            <article class="usage-chip">
+              <span class="usage-label">Scanned files</span>
+              <strong id="scanned-files">--</strong>
+            </article>
+          </section>
+
+          <section class="details-toggle-row">
+            <button id="details-toggle" class="details-toggle" type="button" aria-expanded="false">
+              <span>Detailed token usage</span>
+              <span id="details-toggle-icon" aria-hidden="true">+</span>
+            </button>
+          </section>
+
+          <section id="token-breakdown" class="token-breakdown is-collapsed" aria-label="Detailed token usage">
+            <div class="breakdown-block">
+              <div class="breakdown-head">
+                <h3>Session Totals</h3>
+                <span id="total-window-label">Current session total</span>
+              </div>
+              <div class="breakdown-grid">
+                <article class="metric">
+                  <span class="metric-label">Input</span>
+                  <strong id="total-input">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Output</span>
+                  <strong id="total-output">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Cached</span>
+                  <strong id="total-cached">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Reasoning</span>
+                  <strong id="total-reasoning">--</strong>
+                </article>
+              </div>
+            </div>
+
+            <div class="breakdown-block">
+              <div class="breakdown-head">
+                <h3>Last Response</h3>
+                <span id="last-window-label">Most recent response</span>
+              </div>
+              <div class="breakdown-grid">
+                <article class="metric">
+                  <span class="metric-label">Input</span>
+                  <strong id="last-input">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Output</span>
+                  <strong id="last-output">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Cached</span>
+                  <strong id="last-cached">--</strong>
+                </article>
+                <article class="metric">
+                  <span class="metric-label">Reasoning</span>
+                  <strong id="last-reasoning">--</strong>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="footer">
+          <label class="toggle-row" for="theme-toggle">
+            <input id="theme-toggle" type="checkbox" />
+            <span class="toggle"></span>
+            <span>Day/Night</span>
+          </label>
+
+          <button id="quit-btn" class="quit-btn" type="button">
+            <span class="quit-mark" aria-hidden="true">x</span>
+            <span>Quit</span>
+          </button>
+        </footer>
+
+        <div class="sr-only">
+          <span id="primary-reset">Resets --</span>
+          <span id="secondary-reset">Resets --</span>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
