@@ -2,6 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
+    collections::BTreeMap,
     env,
     fs::{self, File},
     io::{BufRead, BufReader},
@@ -14,6 +15,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+mod history_sync;
 mod relay_config;
 
 #[derive(Clone, Serialize)]
@@ -23,6 +25,28 @@ struct TokenUsage {
     output_tokens: u64,
     reasoning_output_tokens: u64,
     total_tokens: u64,
+}
+
+impl TokenUsage {
+    fn add_assign(&mut self, other: &TokenUsage) {
+        self.input_tokens += other.input_tokens;
+        self.cached_input_tokens += other.cached_input_tokens;
+        self.output_tokens += other.output_tokens;
+        self.reasoning_output_tokens += other.reasoning_output_tokens;
+        self.total_tokens += other.total_tokens;
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct ProviderTokenSummary {
+    provider: String,
+    event_count: usize,
+    input_tokens: u64,
+    cached_input_tokens: u64,
+    output_tokens: u64,
+    reasoning_output_tokens: u64,
+    total_tokens: u64,
+    last_event_at: Option<i64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -47,11 +71,13 @@ struct UsageSnapshot {
     event_count: usize,
     scanned_files: usize,
     model_context_window: Option<u64>,
+    provider_token_summaries: Vec<ProviderTokenSummary>,
 }
 
 #[derive(Clone)]
 struct UsageEvent {
     timestamp: DateTime<Utc>,
+    provider: String,
     plan_type: String,
     primary: RateLimitState,
     secondary: RateLimitState,
@@ -78,7 +104,15 @@ fn parse_rate_limit(value: &Value) -> Option<RateLimitState> {
     })
 }
 
-fn parse_event(line: &str) -> Option<UsageEvent> {
+fn empty_rate_limit() -> RateLimitState {
+    RateLimitState {
+        used_percent: 0.0,
+        window_minutes: 0,
+        resets_at: 0,
+    }
+}
+
+fn parse_event_with_provider(line: &str, provider: &str) -> Option<UsageEvent> {
     let value: Value = serde_json::from_str(line).ok()?;
     let timestamp = value.get("timestamp")?.as_str()?;
     let parsed_time = DateTime::parse_from_rfc3339(timestamp).ok()?;
@@ -88,28 +122,53 @@ fn parse_event(line: &str) -> Option<UsageEvent> {
         return None;
     }
 
-    let rate_limits = payload.get("rate_limits")?;
+    let rate_limits = payload.get("rate_limits");
     let info = payload.get("info");
+    let total_usage = info
+        .and_then(|item| item.get("total_token_usage"))
+        .and_then(parse_usage);
+    let last_usage = info
+        .and_then(|item| item.get("last_token_usage"))
+        .and_then(parse_usage);
+
+    if total_usage.is_none() && last_usage.is_none() {
+        return None;
+    }
 
     Some(UsageEvent {
         timestamp: parsed_time.with_timezone(&Utc),
+        provider: provider.to_string(),
         plan_type: rate_limits
-            .get("plan_type")
+            .and_then(|limits| limits.get("plan_type"))
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_string(),
-        primary: parse_rate_limit(rate_limits.get("primary")?)?,
-        secondary: parse_rate_limit(rate_limits.get("secondary")?)?,
-        total_usage: info
-            .and_then(|item| item.get("total_token_usage"))
-            .and_then(parse_usage),
-        last_usage: info
-            .and_then(|item| item.get("last_token_usage"))
-            .and_then(parse_usage),
+        primary: rate_limits
+            .and_then(|limits| limits.get("primary"))
+            .and_then(parse_rate_limit)
+            .unwrap_or_else(empty_rate_limit),
+        secondary: rate_limits
+            .and_then(|limits| limits.get("secondary"))
+            .and_then(parse_rate_limit)
+            .unwrap_or_else(empty_rate_limit),
+        total_usage,
+        last_usage,
         model_context_window: info
             .and_then(|item| item.get("model_context_window"))
             .and_then(Value::as_u64),
     })
+}
+
+fn parse_session_provider(line: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(Value::as_str)? != "session_meta" {
+        return None;
+    }
+    value
+        .get("payload")
+        .and_then(|payload| payload.get("model_provider"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 fn visit_jsonl_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -140,6 +199,57 @@ fn resolve_sessions_dir(custom_dir: Option<String>) -> Result<PathBuf, String> {
     }
 }
 
+fn infer_codex_home_from_sessions_dir(sessions_dir: &Path) -> Option<PathBuf> {
+    if sessions_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "sessions")
+    {
+        return sessions_dir.parent().map(Path::to_path_buf);
+    }
+
+    None
+}
+
+fn parse_quoted_toml_value(line: &str, key: &str) -> Option<String> {
+    let rest = line.strip_prefix(key)?.trim_start();
+    let value = rest.strip_prefix('=')?.trim_start();
+    let value = value.strip_prefix('"')?;
+    let end = value.find('"')?;
+    Some(value[..end].to_string())
+}
+
+fn read_configured_providers(codex_home: Option<&Path>) -> Vec<String> {
+    let mut providers = vec!["openai".to_string()];
+    let Some(codex_home) = codex_home else {
+        return providers;
+    };
+    let contents = fs::read_to_string(codex_home.join("config.toml")).unwrap_or_default();
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if let Some(provider) = parse_quoted_toml_value(trimmed, "model_provider") {
+            if !providers.contains(&provider) {
+                providers.push(provider);
+            }
+            continue;
+        }
+
+        let Some(rest) = trimmed.strip_prefix("[model_providers.") else {
+            continue;
+        };
+        let Some(provider) = rest.strip_suffix(']') else {
+            continue;
+        };
+        let provider = provider.trim().to_string();
+        if !provider.is_empty() && !providers.contains(&provider) {
+            providers.push(provider);
+        }
+    }
+
+    providers
+}
+
 fn load_events(custom_dir: Option<String>) -> Result<(Vec<UsageEvent>, usize, PathBuf), String> {
     let sessions_dir = resolve_sessions_dir(custom_dir)?;
 
@@ -163,8 +273,14 @@ fn load_events(custom_dir: Option<String>) -> Result<(Vec<UsageEvent>, usize, Pa
         };
         let reader = BufReader::new(file);
 
-        for line in reader.lines().map_while(Result::ok) {
-            if let Some(event) = parse_event(&line) {
+        let mut lines = reader.lines().map_while(Result::ok);
+        let provider = lines
+            .next()
+            .and_then(|line| parse_session_provider(&line))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        for line in lines {
+            if let Some(event) = parse_event_with_provider(&line, &provider) {
                 events.push(event);
             }
         }
@@ -204,8 +320,74 @@ fn build_weekly_series(events: &[UsageEvent], now: DateTime<Utc>) -> Vec<f64> {
         .collect()
 }
 
+fn build_provider_token_summaries(
+    events: &[UsageEvent],
+    configured_providers: &[String],
+) -> Vec<ProviderTokenSummary> {
+    let mut totals: BTreeMap<String, (TokenUsage, usize, Option<i64>)> = BTreeMap::new();
+    for provider in configured_providers {
+        totals.entry(provider.clone()).or_insert((
+            TokenUsage {
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_output_tokens: 0,
+                total_tokens: 0,
+            },
+            0,
+            None,
+        ));
+    }
+
+    for event in events {
+        let usage = event.last_usage.as_ref().or(event.total_usage.as_ref());
+        let Some(usage) = usage else {
+            continue;
+        };
+        let entry = totals.entry(event.provider.clone()).or_insert((
+            TokenUsage {
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                output_tokens: 0,
+                reasoning_output_tokens: 0,
+                total_tokens: 0,
+            },
+            0,
+            None,
+        ));
+        entry.0.add_assign(usage);
+        entry.1 += 1;
+        entry.2 = Some(entry.2.unwrap_or(i64::MIN).max(event.timestamp.timestamp()));
+    }
+
+    let mut summaries: Vec<ProviderTokenSummary> = totals
+        .into_iter()
+        .map(
+            |(provider, (usage, event_count, last_event_at))| ProviderTokenSummary {
+                provider,
+                event_count,
+                input_tokens: usage.input_tokens,
+                cached_input_tokens: usage.cached_input_tokens,
+                output_tokens: usage.output_tokens,
+                reasoning_output_tokens: usage.reasoning_output_tokens,
+                total_tokens: usage.total_tokens,
+                last_event_at,
+            },
+        )
+        .collect();
+    summaries.sort_by(|left, right| {
+        right
+            .total_tokens
+            .cmp(&left.total_tokens)
+            .then_with(|| left.provider.cmp(&right.provider))
+    });
+    summaries
+}
+
 fn build_snapshot(custom_dir: Option<String>) -> Result<UsageSnapshot, String> {
     let (events, scanned_files, sessions_dir) = load_events(custom_dir)?;
+    let codex_home = infer_codex_home_from_sessions_dir(&sessions_dir);
+    let configured_providers = read_configured_providers(codex_home.as_deref());
     let latest = events
         .last()
         .cloned()
@@ -226,6 +408,7 @@ fn build_snapshot(custom_dir: Option<String>) -> Result<UsageSnapshot, String> {
         event_count: events.len(),
         scanned_files,
         model_context_window: latest.model_context_window,
+        provider_token_summaries: build_provider_token_summaries(&events, &configured_providers),
     })
 }
 
@@ -303,6 +486,18 @@ fn apply_relay_config_and_restart(
     settings: relay_config::RelaySettings,
 ) -> Result<relay_config::ApplyAndRestartResult, String> {
     relay_config::apply_relay_config_and_restart_default(settings)
+}
+
+#[tauri::command]
+fn history_sync_status() -> Result<history_sync::HistorySyncStatus, String> {
+    history_sync::history_sync_status_default()
+}
+
+#[tauri::command]
+fn sync_history_to_provider(
+    provider: Option<String>,
+) -> Result<history_sync::HistorySyncResult, String> {
+    history_sync::sync_history_to_provider_default(provider)
 }
 
 fn restore_main_window(app: &tauri::AppHandle) {
@@ -384,7 +579,9 @@ pub fn run() {
             clear_relay_config,
             relay_status,
             restart_codex_app,
-            apply_relay_config_and_restart
+            apply_relay_config_and_restart,
+            history_sync_status,
+            sync_history_to_provider
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

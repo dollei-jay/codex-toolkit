@@ -1,5 +1,7 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -11,6 +13,8 @@ use toml_edit::{value, DocumentMut, Item};
 
 const DEFAULT_RELAY_PROVIDER: &str = "moapi";
 const LEGACY_RELAY_PROVIDER: &str = "CodexViewerRelay";
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +124,7 @@ pub fn restart_codex_app() -> RestartResult {
 
     let started = app_path
         .as_ref()
-        .map(|path| Command::new(path).spawn().is_ok())
+        .map(|path| spawn_hidden(path).is_ok())
         .unwrap_or(false);
 
     let message = if started {
@@ -490,9 +494,35 @@ fn stop_codex_processes() -> bool {
 }
 
 #[cfg(target_os = "windows")]
+fn spawn_hidden(path: &str) -> Result<(), String> {
+    Command::new(path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn spawn_hidden(path: &str) -> Result<(), String> {
+    Command::new(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
 fn powershell_output(script: &str) -> Result<String, String> {
     let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script,
+        ])
         .output()
         .map_err(|error| error.to_string())?;
     if !output.status.success() {

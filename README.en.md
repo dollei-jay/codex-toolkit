@@ -1,7 +1,7 @@
 # Codex Toolkit
 
 <p align="center">
-  <strong>A local-first desktop toolkit for Codex usage monitoring and relay provider management.</strong>
+  <strong>A local-first desktop toolkit for Codex usage monitoring, relay provider management, and history sync.</strong>
 </p>
 
 <p align="center">
@@ -16,10 +16,11 @@
   <a href="#quick-start">Quick Start</a> |
   <a href="#features">Features</a> |
   <a href="#relay-management">Relay Management</a> |
+  <a href="#history-sync">History Sync</a> |
   <a href="#development">Development</a>
 </p>
 
-Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`.
+Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard, including token totals grouped by provider. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`. When needed, it can sync historical session provider metadata to your current route.
 
 Current release targets: Windows and macOS.
 
@@ -56,9 +57,10 @@ Build outputs are generated under:
 
 | Area | What you get |
 | --- | --- |
-| Token dashboard | Current session totals, last response usage, trend views, context window size |
+| Token dashboard | Current session totals, last response usage, trend views, context window size, provider token totals |
 | Rate-limit view | 5-hour and weekly usage windows based on local Codex session logs |
 | Relay management | Provider ID, API Base URL, API Key, apply, restore official, apply and restart |
+| History sync | Review provider history counts and sync session files plus local SQLite history to the current provider |
 | Desktop behavior | Tray minimize/restore, login autostart, edge snapping, privacy mode |
 | UI | English/Chinese menu switching and day/night theme toggle |
 
@@ -100,17 +102,34 @@ config.toml.codexviewer-backup-YYYYMMDD-HHMMSS
 
 Restore official removes the active toolkit-managed provider, the default `moapi` provider, and the legacy `CodexViewerRelay` provider if present.
 
+## History Sync
+
+The history sync panel reads the current Codex provider and counts provider records from:
+
+- rollout session files under `~/.codex/sessions` and `~/.codex/archived_sessions`
+- thread rows in `~/.codex/state_5.sqlite`
+- backups created by the toolkit history sync flow
+
+Clicking "Sync history" updates historical sessions that do not match the current provider and updates local SQLite thread rows. Before syncing, Codex Toolkit backs up the original session metadata, `state_5.sqlite`, Codex config, and global state files under:
+
+```text
+~/.codex/backups_state/toolkit-history-sync/YYYYMMDDTHHMMSS.sssZ
+```
+
+If older histories contain `encrypted_content` from another provider, the panel shows a warning: sync can restore list visibility, but continuing those sessions may still be affected by provider-specific encrypted content.
+
 ## How Data Loading Works
 
 The app:
 
 1. Resolves the Codex sessions directory
 2. Recursively scans `.jsonl` files
-3. Extracts `token_count` events
-4. Reads the current toolkit-managed Codex provider status
-5. Builds the latest token snapshot and trend series
-6. Labels usage as official or relay-backed
-7. Renders the result in the desktop UI
+3. Reads `model_provider` from the first-line `session_meta`
+4. Extracts `token_count` events
+5. Reads the current toolkit-managed Codex provider status
+6. Builds the latest token snapshot, trend series, and provider token summaries
+7. Labels usage as official or relay-backed
+8. Renders the result in the desktop UI
 
 Default log location:
 
@@ -124,7 +143,7 @@ You can override the log directory from the settings panel.
 
 OpenAI's public API usage endpoints are designed for organization billing and API usage, not local Codex desktop session analytics. Relay providers also differ in how they expose usage data.
 
-Codex Toolkit focuses on local Codex usage reconstruction by reading session log files already available on your machine, then labels that usage according to your current Codex route: official or relay.
+Codex Toolkit focuses on local Codex usage reconstruction by reading session log files already available on your machine, then shows history distribution from each session's provider metadata and your current Codex route.
 
 ## Development
 
@@ -174,9 +193,9 @@ git push origin v1.0.0
 
 ## Privacy
 
-Codex Toolkit reads local session logs from your machine. It does not call the public OpenAI organization usage API to populate the dashboard.
+Codex Toolkit reads local session logs and the local Codex SQLite state database from your machine. It does not call the public OpenAI organization usage API to populate the dashboard.
 
-API keys are stored locally in the toolkit settings file and written to Codex config only when you apply relay settings. Avoid sharing screenshots that reveal full local paths or sensitive relay details; use the built-in privacy toggle when needed.
+API keys are stored locally in the toolkit settings file and written to Codex config only when you apply relay settings. History sync rewrites local session metadata and local SQLite provider markers, with automatic backups before changes are applied. Avoid sharing screenshots that reveal full local paths or sensitive relay details; use the built-in privacy toggle when needed.
 
 ## Contributing
 

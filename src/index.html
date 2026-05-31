@@ -201,9 +201,58 @@
             <small id="relay-action-status" class="relay-action-status" data-i18n="ready">Ready</small>
           </section>
 
+          <section class="api-switcher history-sync-panel" aria-label="History sync">
+            <div class="api-switcher-head">
+              <div>
+                <strong data-i18n="historySyncTitle">History sync</strong>
+                <small id="history-sync-provider">--</small>
+              </div>
+            </div>
+
+            <div class="relay-status-grid" aria-live="polite">
+              <span data-i18n="targetProvider">Provider</span>
+              <strong id="history-provider">--</strong>
+              <span data-i18n="rolloutPending">Rollout</span>
+              <strong id="history-rollout-pending">--</strong>
+              <span data-i18n="sqlitePending">SQLite</span>
+              <strong id="history-sqlite-pending">--</strong>
+              <span data-i18n="backups">Backups</span>
+              <strong id="history-backups">--</strong>
+            </div>
+
+            <div class="history-provider-head">
+              <span data-i18n="allProviderHistory">All provider records</span>
+              <span data-i18n="historyRecordColumns">Total / files / DB</span>
+            </div>
+            <div id="history-provider-list" class="history-provider-list" aria-live="polite"></div>
+
+            <div class="relay-actions">
+              <button id="history-status-btn" class="relay-btn" type="button" data-i18n="refreshStatus">Refresh status</button>
+              <button id="history-sync-btn" class="relay-btn relay-btn-primary" type="button" data-i18n="syncHistory">Sync history</button>
+            </div>
+
+            <small id="history-action-status" class="relay-action-status" data-i18n="ready">Ready</small>
+          </section>
+
           <p class="settings-note">
             <span data-i18n="settingsNote">Source is local Codex session logs. This is not the OpenAI API Usage endpoint and not a remote ChatGPT Plus dashboard.</span>
           </p>
+
+          <section class="about-panel" aria-label="About Codex Toolkit">
+            <div>
+              <strong>Codex Toolkit</strong>
+              <small id="app-version">v1.1.0</small>
+            </div>
+            <div class="about-details">
+              <span>Author: moshushi</span>
+              <span>Price: Free</span>
+              <a
+                href="https://github.com/ismoshushi/codex-toolkit"
+                target="_blank"
+                rel="noreferrer"
+              >GitHub repository</a>
+            </div>
+          </section>
 
           <div class="settings-meta">
             <span id="source-text">Source: local Codex session logs</span>
@@ -358,6 +407,14 @@
                   <strong id="last-reasoning">--</strong>
                 </article>
               </div>
+            </div>
+
+            <div class="breakdown-block">
+              <div class="breakdown-head">
+                <h3 data-i18n="providerTokenUsage">Provider Tokens</h3>
+                <span data-i18n="localLogStats">Local log stats</span>
+              </div>
+              <div id="provider-token-list" class="provider-token-list" aria-live="polite"></div>
             </div>
           </section>
         </div>

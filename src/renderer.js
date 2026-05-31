@@ -1,4 +1,5 @@
 import { invoke } from './vendor/@tauri-apps/api/core.js';
+import { getVersion } from './vendor/@tauri-apps/api/app.js';
 import { PhysicalPosition, PhysicalSize } from './vendor/@tauri-apps/api/dpi.js';
 import { currentMonitor, getCurrentWindow } from './vendor/@tauri-apps/api/window.js';
 
@@ -37,6 +38,15 @@ const relayActionStatus = document.getElementById('relay-action-status');
 const relayApplyBtn = document.getElementById('relay-apply-btn');
 const relayRestartBtn = document.getElementById('relay-restart-btn');
 const relayClearBtn = document.getElementById('relay-clear-btn');
+const historySyncProvider = document.getElementById('history-sync-provider');
+const historyProvider = document.getElementById('history-provider');
+const historyRolloutPending = document.getElementById('history-rollout-pending');
+const historySqlitePending = document.getElementById('history-sqlite-pending');
+const historyBackups = document.getElementById('history-backups');
+const historyProviderList = document.getElementById('history-provider-list');
+const historyActionStatus = document.getElementById('history-action-status');
+const historyStatusBtn = document.getElementById('history-status-btn');
+const historySyncBtn = document.getElementById('history-sync-btn');
 const quitBtn = document.getElementById('quit-btn');
 const detailsToggle = document.getElementById('details-toggle');
 const detailsToggleIcon = document.getElementById('details-toggle-icon');
@@ -68,8 +78,10 @@ const lastCached = document.getElementById('last-cached');
 const lastReasoning = document.getElementById('last-reasoning');
 const totalWindowLabel = document.getElementById('total-window-label');
 const lastWindowLabel = document.getElementById('last-window-label');
+const providerTokenList = document.getElementById('provider-token-list');
 const sourceText = document.getElementById('source-text');
 const planText = document.getElementById('plan-text');
+const appVersion = document.getElementById('app-version');
 
 const SNAP_STORAGE_KEY = 'codexviewer:snap-enabled';
 const THEME_STORAGE_KEY = 'codexviewer:dark-mode';
@@ -82,7 +94,7 @@ const LANGUAGE_STORAGE_KEY = 'codexviewer:language';
 const RELAY_LAST_APPLY_STORAGE_KEY = 'codexviewer:relay-last-apply';
 const SNAP_THRESHOLD = 24;
 const COLLAPSED_HEIGHT = 496;
-const EXPANDED_HEIGHT = 650;
+const EXPANDED_HEIGHT = 760;
 
 let isSnapping = false;
 let currentWindowHeight = COLLAPSED_HEIGHT;
@@ -90,6 +102,17 @@ let refreshTimer = null;
 let sourcePathRaw = 'Local Codex session logs';
 let currentRelayStatus = null;
 let currentLanguage = 'en';
+
+async function loadAppVersion() {
+  if (!appVersion) {
+    return;
+  }
+  try {
+    appVersion.textContent = `v${await getVersion()}`;
+  } catch (error) {
+    appVersion.textContent = 'v1.1.0';
+  }
+}
 
 const I18N = {
   en: {
@@ -135,6 +158,18 @@ const I18N = {
     applyToCodex: 'Apply to Codex',
     applyRestart: 'Apply & Restart Codex',
     restoreOfficial: 'Restore official',
+    historySyncTitle: 'History sync',
+    targetProvider: 'Provider',
+    rolloutPending: 'Pending files',
+    sqlitePending: 'Pending DB rows',
+    backups: 'Backups',
+    refreshStatus: 'Refresh status',
+    syncHistory: 'Sync history',
+    currentProviderBadge: 'Current',
+    noProviderHistory: 'No provider history found',
+    allProviderHistory: 'All provider records',
+    historyRecordColumns: 'Total / files / DB',
+    historyProviderCounts: (total, files, rows) => `${total} total | ${files} files | ${rows} DB`,
     ready: 'Ready',
     settingsNote: 'Source is local Codex session logs. This is not the OpenAI API Usage endpoint and not a remote ChatGPT Plus dashboard.',
     sourcePrefix: 'Source',
@@ -153,6 +188,10 @@ const I18N = {
     currentSessionTotal: 'Current session total',
     mostRecentResponse: 'Most recent response',
     lastResponse: 'Last Response',
+    providerTokenUsage: 'Provider Tokens',
+    localLogStats: 'Local log stats',
+    noProviderTokens: 'No provider token records',
+    providerTokenLine: (total, events) => `${total} tokens | ${events} events`,
     input: 'Input',
     output: 'Output',
     cached: 'Cached',
@@ -188,6 +227,10 @@ const I18N = {
     applyingRelay: 'Applying relay config...',
     applyingRestart: 'Applying and restarting Codex...',
     restoringOfficial: 'Restoring official endpoint...',
+    loadingHistoryStatus: 'Reading history status...',
+    syncingHistory: 'Syncing history...',
+    historyStatusLoaded: (rollouts, rows) => `${rollouts} rollout file(s), ${rows} SQLite row(s) pending`,
+    historySynced: (files, rows) => `Synced ${files} session file(s), ${rows} SQLite row(s).`,
     configured: 'Configured',
     notApplied: 'Not applied',
     running: 'Running',
@@ -244,6 +287,18 @@ const I18N = {
     applyToCodex: '应用到 Codex',
     applyRestart: '应用并重启 Codex',
     restoreOfficial: '恢复官方端点',
+    historySyncTitle: '历史同步',
+    targetProvider: 'Provider',
+    rolloutPending: '待同步文件',
+    sqlitePending: '待同步数据库行',
+    backups: '备份',
+    refreshStatus: '刷新状态',
+    syncHistory: '同步历史',
+    currentProviderBadge: '当前',
+    noProviderHistory: '没有找到 provider 历史',
+    allProviderHistory: '所有 Provider 记录',
+    historyRecordColumns: '总数 / 文件 / 数据库',
+    historyProviderCounts: (total, files, rows) => `总数 ${total} | 文件 ${files} | 数据库 ${rows}`,
     ready: '就绪',
     settingsNote: '来源是本地 Codex 会话日志，不是 OpenAI API Usage 接口，也不是远程 ChatGPT Plus 仪表盘。',
     sourcePrefix: '来源',
@@ -262,6 +317,10 @@ const I18N = {
     currentSessionTotal: '当前会话总计',
     mostRecentResponse: '最近一次回复',
     lastResponse: '最近回复',
+    providerTokenUsage: 'Provider Tokens',
+    localLogStats: '本地日志统计',
+    noProviderTokens: '没有 provider token 记录',
+    providerTokenLine: (total, events) => `${total} tokens | ${events} 条记录`,
     input: '输入',
     output: '输出',
     cached: '缓存',
@@ -297,6 +356,10 @@ const I18N = {
     applyingRelay: '正在应用中转站配置...',
     applyingRestart: '正在应用并重启 Codex...',
     restoringOfficial: '正在恢复官方端点...',
+    loadingHistoryStatus: '正在读取历史状态...',
+    syncingHistory: '正在同步历史...',
+    historyStatusLoaded: (rollouts, rows) => `${rollouts} 个 rollout 文件，${rows} 行 SQLite 待同步`,
+    historySynced: (files, rows) => `已同步 ${files} 个会话文件，${rows} 行 SQLite。`,
     configured: '已配置',
     notApplied: '未应用',
     running: '运行中',
@@ -513,7 +576,7 @@ function applyDetailsPreference(expanded) {
   document.querySelector('.widget')?.classList.toggle('is-expanded', expanded);
   tokenBreakdown.classList.toggle('is-collapsed', !expanded);
   detailsToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  detailsToggleIcon.textContent = expanded ? '-' : '+';
+  detailsToggleIcon.textContent = expanded ? '▲' : '▼';
   localStorage.setItem(DETAILS_STORAGE_KEY, expanded ? '1' : '0');
 }
 
@@ -621,6 +684,17 @@ function setRelayActionStatus(message, isError = false) {
   relayActionStatus.classList.toggle('is-error', isError);
 }
 
+function setHistoryBusy(isBusy) {
+  [historyStatusBtn, historySyncBtn].forEach((button) => {
+    button.disabled = isBusy;
+  });
+}
+
+function setHistoryActionStatus(message, isError = false) {
+  historyActionStatus.textContent = message;
+  historyActionStatus.classList.toggle('is-error', isError);
+}
+
 function renderRelayStatus(status) {
   currentRelayStatus = status || null;
   relayStatusRoute.textContent = status?.route === 'relay' ? t('relay') : t('official');
@@ -659,8 +733,89 @@ async function refreshRelayStatus() {
   try {
     const status = await invoke('relay_status');
     renderRelayStatus(status);
+    await loadHistoryStatus();
   } catch (error) {
     setRelayActionStatus(String(error), true);
+  }
+}
+
+function renderHistoryStatus(status) {
+  const provider = status?.currentProvider || '--';
+  const pendingRollouts = status?.pendingRolloutFiles ?? 0;
+  const pendingRows = status?.pendingSqliteRows ?? 0;
+  historySyncProvider.textContent = provider;
+  historyProvider.textContent = status?.currentProviderImplicit ? `${provider} (default)` : provider;
+  historyRolloutPending.textContent = String(pendingRollouts);
+  historySqlitePending.textContent = status?.sqliteError || String(pendingRows);
+  historySqlitePending.title = status?.sqliteError || '';
+  historyBackups.textContent = String(status?.backupCount ?? 0);
+  renderHistoryProviderList(status?.providerSummaries || []);
+  const warning = status?.encryptedContentWarning;
+  setHistoryActionStatus(warning || t('historyStatusLoaded', pendingRollouts, pendingRows), Boolean(warning));
+}
+
+function renderHistoryProviderList(summaries) {
+  historyProviderList.innerHTML = '';
+  if (!summaries.length) {
+    const empty = document.createElement('span');
+    empty.className = 'history-provider-empty';
+    empty.textContent = t('noProviderHistory');
+    historyProviderList.appendChild(empty);
+    return;
+  }
+
+  summaries.forEach((summary) => {
+    const row = document.createElement('div');
+    row.className = 'history-provider-row';
+    row.classList.toggle('is-current', Boolean(summary.isCurrent));
+
+    const name = document.createElement('strong');
+    name.textContent = summary.provider || '(missing)';
+
+    const counts = document.createElement('span');
+    const totalFiles = summary.totalRollout || 0;
+    const totalRows = summary.totalSqlite || 0;
+    counts.textContent = t('historyProviderCounts', Math.max(totalFiles, totalRows), totalFiles, totalRows);
+    counts.title = `sessions ${summary.rolloutSessions || 0}, archived ${summary.rolloutArchivedSessions || 0}, DB active ${summary.sqliteSessions || 0}, DB archived ${summary.sqliteArchivedSessions || 0}`;
+
+    row.appendChild(name);
+    if (summary.isCurrent) {
+      const badge = document.createElement('em');
+      badge.textContent = t('currentProviderBadge');
+      row.appendChild(badge);
+    }
+    row.appendChild(counts);
+    historyProviderList.appendChild(row);
+  });
+}
+
+async function loadHistoryStatus() {
+  setHistoryBusy(true);
+  setHistoryActionStatus(t('loadingHistoryStatus'));
+  try {
+    const status = await invoke('history_sync_status');
+    renderHistoryStatus(status);
+  } catch (error) {
+    setHistoryActionStatus(String(error), true);
+  } finally {
+    setHistoryBusy(false);
+  }
+}
+
+async function syncHistoryToCurrentProvider() {
+  setHistoryBusy(true);
+  setHistoryActionStatus(t('syncingHistory'));
+  try {
+    const result = await invoke('sync_history_to_provider', { provider: null });
+    setHistoryActionStatus(
+      result.encryptedContentWarning || t('historySynced', result.changedSessionFiles, result.sqliteRowsUpdated),
+      Boolean(result.encryptedContentWarning)
+    );
+    await loadHistoryStatus();
+  } catch (error) {
+    setHistoryActionStatus(String(error), true);
+  } finally {
+    setHistoryBusy(false);
   }
 }
 
@@ -808,12 +963,29 @@ function resetSnapshotView() {
   lastOutput.textContent = '--';
   lastCached.textContent = '--';
   lastReasoning.textContent = '--';
+  providerTokenList.innerHTML = '';
   totalWindowLabel.textContent = t('currentSessionTotal');
   lastWindowLabel.textContent = t('mostRecentResponse');
   syncTime.textContent = '--';
   dailyBars.innerHTML = '';
   weeklyPath.setAttribute('d', '');
   weeklyShadow.setAttribute('d', '');
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function tokenField(usage, snakeName, camelName) {
+  return usage ? firstDefined(usage[snakeName], usage[camelName]) : undefined;
+}
+
+function tokenTotal(usage) {
+  return tokenField(usage, 'total_tokens', 'totalTokens');
+}
+
+function snapshotField(snapshot, snakeName, camelName, fallback) {
+  return firstDefined(snapshot?.[snakeName], snapshot?.[camelName], fallback);
 }
 
 async function syncWindowHeight(expanded) {
@@ -890,12 +1062,12 @@ async function maybeSnapToEdges() {
 }
 
 function renderSnapshot(snapshot) {
-  const latestAt = new Date(snapshot.last_event_at * 1000);
-  const weeklyD = buildWeeklyPath(snapshot.weekly_secondary_percents || []);
-  const totalUsage = snapshot.total_usage || null;
-  const lastUsage = snapshot.last_usage || null;
-  const totalTokenValue = totalUsage?.total_tokens ?? lastUsage?.total_tokens;
-  const lastTokenValue = lastUsage?.total_tokens;
+  const latestAt = new Date(snapshotField(snapshot, 'last_event_at', 'lastEventAt', 0) * 1000);
+  const weeklyD = buildWeeklyPath(snapshotField(snapshot, 'weekly_secondary_percents', 'weeklySecondaryPercents', []));
+  const totalUsage = snapshotField(snapshot, 'total_usage', 'totalUsage', null);
+  const lastUsage = snapshotField(snapshot, 'last_usage', 'lastUsage', null);
+  const totalTokenValue = tokenTotal(totalUsage) ?? tokenTotal(lastUsage);
+  const lastTokenValue = tokenTotal(lastUsage);
   const summaryMode = getSummaryMode();
   const mainTokenValue = summaryMode === 'last' ? lastTokenValue : totalTokenValue;
   const primaryUsed = clampPercent(snapshot.primary.used_percent);
@@ -909,7 +1081,7 @@ function renderSnapshot(snapshot) {
   const routeLabel = getUsageRouteLabel();
   const sourceDetail = getUsageSourceDetail(snapshot);
   planText.textContent = `${routeLabel} | ${t('planPrefix')} ${formatPlanName(snapshot.plan_type)}`;
-  sourceText.textContent = t('tokensFromEvents', routeLabel, snapshot.event_count, snapshot.scanned_files);
+  sourceText.textContent = t('tokensFromEvents', routeLabel, snapshotField(snapshot, 'event_count', 'eventCount', 0), snapshotField(snapshot, 'scanned_files', 'scannedFiles', 0));
   setStatus('ready', routeLabel, sourceDetail);
 
   primaryPercent.textContent = `${primaryUsed}%`;
@@ -923,20 +1095,23 @@ function renderSnapshot(snapshot) {
   primaryReset.textContent = `5 hour window ${snapshot.primary.window_minutes / 60}h`;
   secondaryReset.textContent = formatReset(snapshot.secondary.resets_at);
 
-  totalTokens.textContent = formatNumber(mainTokenValue);
-  lastTokens.textContent = formatNumber(lastTokenValue);
+  totalTokens.textContent = formatCompactNumber(mainTokenValue);
+  totalTokens.title = formatNumber(mainTokenValue);
+  lastTokens.textContent = formatCompactNumber(lastTokenValue);
+  lastTokens.title = formatNumber(lastTokenValue);
   contextWindow.textContent = formatCompactNumber(snapshot.model_context_window);
-  scannedFiles.textContent = formatNumber(snapshot.scanned_files);
-  totalInput.textContent = formatNumber(totalUsage?.input_tokens);
-  totalOutput.textContent = formatNumber(totalUsage?.output_tokens);
-  totalCached.textContent = formatNumber(totalUsage?.cached_input_tokens);
-  totalReasoning.textContent = formatNumber(totalUsage?.reasoning_output_tokens);
-  lastInput.textContent = formatNumber(lastUsage?.input_tokens);
-  lastOutput.textContent = formatNumber(lastUsage?.output_tokens);
-  lastCached.textContent = formatNumber(lastUsage?.cached_input_tokens);
-  lastReasoning.textContent = formatNumber(lastUsage?.reasoning_output_tokens);
-  totalWindowLabel.textContent = totalUsage ? `${t('total')} ${formatNumber(totalUsage.total_tokens)}` : t('currentSessionTotal');
-  lastWindowLabel.textContent = lastUsage ? `${t('total')} ${formatNumber(lastUsage.total_tokens)}` : t('mostRecentResponse');
+  scannedFiles.textContent = formatNumber(snapshotField(snapshot, 'scanned_files', 'scannedFiles'));
+  totalInput.textContent = formatNumber(tokenField(totalUsage, 'input_tokens', 'inputTokens'));
+  totalOutput.textContent = formatNumber(tokenField(totalUsage, 'output_tokens', 'outputTokens'));
+  totalCached.textContent = formatNumber(tokenField(totalUsage, 'cached_input_tokens', 'cachedInputTokens'));
+  totalReasoning.textContent = formatNumber(tokenField(totalUsage, 'reasoning_output_tokens', 'reasoningOutputTokens'));
+  lastInput.textContent = formatNumber(tokenField(lastUsage, 'input_tokens', 'inputTokens'));
+  lastOutput.textContent = formatNumber(tokenField(lastUsage, 'output_tokens', 'outputTokens'));
+  lastCached.textContent = formatNumber(tokenField(lastUsage, 'cached_input_tokens', 'cachedInputTokens'));
+  lastReasoning.textContent = formatNumber(tokenField(lastUsage, 'reasoning_output_tokens', 'reasoningOutputTokens'));
+  totalWindowLabel.textContent = totalUsage ? `${t('total')} ${formatNumber(tokenTotal(totalUsage))}` : t('currentSessionTotal');
+  lastWindowLabel.textContent = lastUsage ? `${t('total')} ${formatNumber(tokenTotal(lastUsage))}` : t('mostRecentResponse');
+  renderProviderTokenSummaries(snapshotField(snapshot, 'provider_token_summaries', 'providerTokenSummaries', []));
   syncTime.textContent = `${latestAt.toLocaleString(currentLanguage === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'numeric',
     day: 'numeric',
@@ -944,11 +1119,48 @@ function renderSnapshot(snapshot) {
     minute: '2-digit'
   })} (${eventLabel})`;
 
-  renderBars(snapshot.hourly_primary_percents || []);
+  renderBars(snapshotField(snapshot, 'hourly_primary_percents', 'hourlyPrimaryPercents', []));
   weeklyPath.setAttribute('d', weeklyD);
   weeklyShadow.setAttribute('d', weeklyD);
 
   updatedAt.title = `${t('sourcePrefix')} ${sourceDetail}\n${t('lastUsageEvent')} ${latestAt.toLocaleString(currentLanguage === 'zh' ? 'zh-CN' : 'en-US')}`;
+}
+
+function renderProviderTokenSummaries(summaries) {
+  if (!providerTokenList) {
+    return;
+  }
+  providerTokenList.innerHTML = '';
+  if (!summaries.length) {
+    const empty = document.createElement('span');
+    empty.className = 'provider-token-empty';
+    empty.textContent = t('noProviderTokens');
+    providerTokenList.appendChild(empty);
+    return;
+  }
+
+  summaries.forEach((summary) => {
+    const row = document.createElement('div');
+    row.className = 'provider-token-row';
+
+    const name = document.createElement('strong');
+    name.textContent = summary.provider || 'unknown';
+
+    const total = document.createElement('span');
+    total.textContent = t(
+      'providerTokenLine',
+      formatNumber(firstDefined(summary.total_tokens, summary.totalTokens, 0)),
+      firstDefined(summary.event_count, summary.eventCount, 0)
+    );
+
+    const parts = document.createElement('small');
+    parts.textContent = `in ${formatNumber(firstDefined(summary.input_tokens, summary.inputTokens, 0))} | out ${formatNumber(firstDefined(summary.output_tokens, summary.outputTokens, 0))} | cached ${formatNumber(firstDefined(summary.cached_input_tokens, summary.cachedInputTokens, 0))} | reasoning ${formatNumber(firstDefined(summary.reasoning_output_tokens, summary.reasoningOutputTokens, 0))}`;
+
+    row.appendChild(name);
+    row.appendChild(total);
+    row.appendChild(parts);
+    providerTokenList.appendChild(row);
+  });
 }
 
 async function loadSnapshot() {
@@ -960,8 +1172,8 @@ async function loadSnapshot() {
     const snapshot = await invoke('load_usage_snapshot', {
       sessionsDir: sessionsDir || null
     });
-    await refreshRelayStatus();
     renderSnapshot(snapshot);
+    await refreshRelayStatus();
   } catch (error) {
     resetSnapshotView();
     updatedAt.textContent = t('readFailed');
@@ -1048,6 +1260,14 @@ relayClearBtn.addEventListener('click', () => {
   clearRelayConfig();
 });
 
+historyStatusBtn.addEventListener('click', () => {
+  loadHistoryStatus();
+});
+
+historySyncBtn.addEventListener('click', () => {
+  syncHistoryToCurrentProvider();
+});
+
 autostartToggle.addEventListener('change', async (event) => {
   try {
     if (event.target.checked) {
@@ -1064,6 +1284,11 @@ autostartToggle.addEventListener('change', async (event) => {
 detailsToggle.addEventListener('click', () => {
   const isExpanded = detailsToggle.getAttribute('aria-expanded') === 'true';
   applyDetailsPreference(!isExpanded);
+  if (isExpanded === false) {
+    window.setTimeout(() => {
+      tokenBreakdown.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 40);
+  }
   syncWindowHeight(!isExpanded).catch(console.error);
 });
 
@@ -1084,6 +1309,7 @@ applyLogDir(getConfiguredLogDir());
 applySummaryMode(getSummaryMode());
 applyRefreshInterval(getRefreshIntervalMs());
 applyPrivacyMode(isPrivacyModeEnabled());
+await loadAppVersion();
 await loadRelaySettings();
 const detailsExpanded = localStorage.getItem(DETAILS_STORAGE_KEY) === '1';
 applyDetailsPreference(detailsExpanded);

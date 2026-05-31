@@ -85,10 +85,28 @@ body.dark .widget {
   z-index: 1;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.content-scroll::-webkit-scrollbar,
+.settings-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb,
+.settings-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(127, 133, 150, 0.36);
+}
+
+.content-scroll::-webkit-scrollbar-track,
+.settings-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .chrome-glow {
@@ -459,6 +477,64 @@ body.dark .select-input {
   font-size: 10px;
 }
 
+.history-provider-list {
+  display: grid;
+  gap: 6px;
+}
+
+.history-provider-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  color: var(--text-sub);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.history-provider-row,
+.history-provider-empty {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--chip-bg);
+  font-size: 10px;
+}
+
+.history-provider-empty {
+  display: block;
+  color: var(--text-sub);
+}
+
+.history-provider-row strong,
+.history-provider-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-provider-row strong {
+  font-size: 11px;
+}
+
+.history-provider-row span {
+  color: var(--text-sub);
+}
+
+.history-provider-row em {
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--blue);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .relay-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -528,6 +604,49 @@ body.dark .relay-btn-danger {
   gap: 8px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
+}
+
+.about-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chip-bg);
+}
+
+.about-panel strong,
+.about-panel small,
+.about-panel span,
+.about-panel a {
+  display: block;
+}
+
+.about-panel strong {
+  font-size: 12px;
+}
+
+.about-panel small,
+.about-panel span,
+.about-panel a {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-sub);
+}
+
+.about-panel a {
+  color: var(--blue);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.about-panel a:hover {
+  text-decoration: underline;
+}
+
+.about-details {
+  display: grid;
+  gap: 3px;
 }
 
 .switch {
@@ -771,16 +890,13 @@ body.dark .details-toggle {
   z-index: 1;
   display: grid;
   gap: 10px;
-  overflow: hidden;
-  max-height: 420px;
   opacity: 1;
-  transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease, margin-top 180ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .token-breakdown.is-collapsed {
-  max-height: 0;
+  display: none;
   opacity: 0;
-  margin-top: -4px;
 }
 
 .breakdown-block {
@@ -841,6 +957,57 @@ body.dark .metric {
   font-size: 12px;
   line-height: 1.15;
   letter-spacing: -0.01em;
+}
+
+.provider-token-list {
+  display: grid;
+  gap: 7px;
+}
+
+.provider-token-row,
+.provider-token-empty {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: 3px 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(62, 111, 247, 0.05);
+}
+
+body.dark .provider-token-row,
+body.dark .provider-token-empty {
+  background: rgba(137, 166, 255, 0.11);
+}
+
+.provider-token-empty {
+  display: block;
+  color: var(--text-sub);
+  font-size: 10px;
+}
+
+.provider-token-row strong,
+.provider-token-row span,
+.provider-token-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-token-row strong {
+  font-size: 11px;
+}
+
+.provider-token-row span {
+  text-align: right;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.provider-token-row small {
+  grid-column: 1 / -1;
+  color: var(--text-sub);
+  font-size: 10px;
 }
 
 .footer {
