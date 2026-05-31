@@ -27,10 +27,15 @@ Current release targets: Windows and macOS.
 ## Screenshots
 
 <p>
-  <img src="./docs/images/app-screenshot.png" alt="Codex Toolkit dark dashboard" width="24%" />
-  <img src="./docs/images/dashboard-view.png" alt="Codex Toolkit light dashboard" width="24%" />
-  <img src="./docs/images/settings-dark-view.png" alt="Codex Toolkit dark settings" width="24%" />
-  <img src="./docs/images/settings-view.png" alt="Codex Toolkit light settings" width="24%" />
+  <img src="./docs/images/relay-management.png" alt="Codex Toolkit relay configuration panel" width="31%" />
+  <img src="./docs/images/history-sync.png" alt="Codex Toolkit history sync panel with provider records" width="31%" />
+  <img src="./docs/images/about-panel.png" alt="Codex Toolkit about panel with version and GitHub link" width="31%" />
+</p>
+
+<p>
+  <img src="./docs/images/app-screenshot.png" alt="Codex Toolkit dark dashboard" width="31%" />
+  <img src="./docs/images/dashboard-view.png" alt="Codex Toolkit light dashboard" width="31%" />
+  <img src="./docs/images/settings-dark-view.png" alt="Codex Toolkit dark settings" width="31%" />
 </p>
 
 ## Quick Start
