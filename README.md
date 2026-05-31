@@ -22,7 +22,7 @@
 
 Codex Toolkit 会读取本地 Codex 会话日志，把 token 使用情况整理成一个紧凑的桌面仪表盘，并按 provider 汇总历史 token。它也可以管理 Codex 的中转站/API 配置，让你不用手动编辑 `~/.codex/config.toml`，就能在官方路线和中转路线之间切换；需要时还可以把历史会话的 provider 标记同步到当前路线。
 
-当前主要支持 Windows 和 macOS。
+当前主要在 Windows 上测试。macOS 兼容性暂未充分验证，欢迎反馈问题。
 
 ## 截图
 

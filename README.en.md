@@ -22,7 +22,7 @@
 
 Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard, including token totals grouped by provider. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`. When needed, it can sync historical session provider metadata to your current route.
 
-Current release targets: Windows and macOS.
+Currently tested mainly on Windows. macOS compatibility has not been fully verified yet, and issue reports are welcome.
 
 ## Screenshots
 
