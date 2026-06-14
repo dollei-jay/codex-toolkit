@@ -20,7 +20,7 @@
   <a href="#开发">开发</a>
 </p>
 
-Codex Toolkit 会读取本地 Codex 会话日志，把 token 使用情况整理成一个紧凑的桌面仪表盘，并按 provider 汇总历史 token。它也可以管理 Codex 的中转站/API 配置，让你不用手动编辑 `~/.codex/config.toml`，就能在官方路线和中转路线之间切换；需要时还可以把历史会话的 provider 标记同步到当前路线。
+Codex Toolkit 会读取本地 Codex 会话日志，把 token 使用情况整理成一个紧凑的桌面仪表盘，并按 provider 汇总历史 token。当 Codex 使用中转站 provider 时，应用会根据本地 `token_count` 事件重建 24 小时和 7 天 token 用量趋势，即使没有官方限额字段也能看到本机用量变化。它也可以管理 Codex 的中转站/API 配置，让你不用手动编辑 `~/.codex/config.toml`，就能在官方路线和中转路线之间切换；需要时还可以把历史会话的 provider 标记同步到当前路线。
 
 当前主要在 Windows 上测试。macOS 兼容性暂未充分验证，欢迎反馈问题。
 
@@ -64,6 +64,7 @@ npm run build
 | --- | --- |
 | Token 仪表盘 | 当前会话总量、最近回复用量、趋势视图、上下文窗口大小、按 provider 汇总 token |
 | 限额视图 | 基于本地 Codex 会话日志展示 5 小时和每周使用窗口 |
+| 中转站用量趋势 | 使用中转站 provider 时，基于本地 `token_count` 事件重建 24 小时逐小时 token 桶和 7 天 token 总量 |
 | 中转站管理 | Provider ID、API Base URL、API Key、应用配置、恢复官方、应用并重启 |
 | 历史同步 | 查看各 provider 的历史记录数量，将会话文件和本地 SQLite 历史同步到当前 provider |
 | 桌面体验 | 托盘最小化/恢复、开机自启、贴边吸附、隐私模式 |
@@ -133,8 +134,10 @@ config.toml.codexviewer-backup-YYYYMMDD-HHMMSS
 4. 提取 `token_count` 事件
 5. 读取当前工具管理的 Codex provider 状态
 6. 生成最新 token 快照、趋势数据和 provider token 汇总
-7. 将用量标记为官方路线或中转路线
-8. 渲染到桌面 UI
+7. 官方路线使用官方限额百分比
+8. 中转路线使用自计算的 24 小时和 7 天 token 桶
+9. 将用量标记为官方路线或中转路线
+10. 渲染到桌面 UI
 
 默认日志目录：
 
@@ -180,6 +183,10 @@ node --check $tmp
 
 - `CI`：在 push 和 pull request 时运行测试并验证构建
 - `Release`：推送类似 `v1.0.0` 的版本 tag 时构建 Windows/macOS 安装包，并上传到 GitHub Releases
+
+最新修复版本：
+
+- `v1.1.2`：修复安装版启动后用量不会自动刷新的问题，并新增中转站模式下基于本地 token 桶计算的 24 小时用量统计。
 
 发布示例：
 
