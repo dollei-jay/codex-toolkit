@@ -20,7 +20,7 @@
   <a href="#development">Development</a>
 </p>
 
-Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard, including token totals grouped by provider. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`. When needed, it can sync historical session provider metadata to your current route.
+Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard, including token totals grouped by provider. When Codex runs through a relay provider, the app reconstructs 24-hour and 7-day token usage trends from local `token_count` events so usage stays visible even when official rate-limit fields are unavailable. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`. When needed, it can sync historical session provider metadata to your current route.
 
 Currently tested mainly on Windows. macOS compatibility has not been fully verified yet, and issue reports are welcome.
 
@@ -64,6 +64,7 @@ Build outputs are generated under:
 | --- | --- |
 | Token dashboard | Current session totals, last response usage, trend views, context window size, provider token totals |
 | Rate-limit view | 5-hour and weekly usage windows based on local Codex session logs |
+| Relay token trends | 24-hour hourly token buckets and 7-day token totals reconstructed from local `token_count` events when using a relay provider |
 | Relay management | Provider ID, API Base URL, API Key, apply, restore official, apply and restart |
 | History sync | Review provider history counts and sync session files plus local SQLite history to the current provider |
 | Desktop behavior | Tray minimize/restore, login autostart, edge snapping, privacy mode |
@@ -133,8 +134,10 @@ The app:
 4. Extracts `token_count` events
 5. Reads the current toolkit-managed Codex provider status
 6. Builds the latest token snapshot, trend series, and provider token summaries
-7. Labels usage as official or relay-backed
-8. Renders the result in the desktop UI
+7. Uses official rate-limit percentages for the official route
+8. Uses self-computed 24-hour and 7-day token buckets for relay-backed routes
+9. Labels usage as official or relay-backed
+10. Renders the result in the desktop UI
 
 Default log location:
 
@@ -182,6 +185,10 @@ This repository includes two GitHub Actions workflows:
 
 - `CI`: runs tests and verifies the app builds on pushes and pull requests
 - `Release`: builds Windows and macOS bundles and uploads them to GitHub Releases when you push a version tag like `v1.0.0`
+
+Latest fix release:
+
+- `v1.1.2`: fixes installed-app startup so usage refresh runs automatically, and adds relay-mode 24-hour usage statistics based on local token buckets.
 
 Example release flow:
 
