@@ -196,6 +196,7 @@
               <button id="relay-clear-btn" class="relay-btn relay-btn-danger relay-btn-wide" type="button" data-i18n="restoreOfficial">Restore official</button>
               <button id="relay-apply-btn" class="relay-btn" type="button" data-i18n="applyToCodex">Apply to Codex</button>
               <button id="relay-restart-btn" class="relay-btn relay-btn-primary" type="button" data-i18n="applyRestart">Apply & Restart Codex</button>
+              <!-- Plugin unlock launcher is hidden while CDP injection reliability is being validated. -->
             </div>
 
             <small id="relay-action-status" class="relay-action-status" data-i18n="ready">Ready</small>
@@ -234,6 +235,8 @@
             <small id="history-action-status" class="relay-action-status" data-i18n="ready">Ready</small>
           </section>
 
+          <!-- Tools & plugins manager is hidden for now because Codex App already includes native plugin management. -->
+
           <p class="settings-note">
             <span data-i18n="settingsNote">Source is local Codex session logs. This is not the OpenAI API Usage endpoint and not a remote ChatGPT Plus dashboard.</span>
           </p>
@@ -241,7 +244,7 @@
           <section class="about-panel" aria-label="About Codex Toolkit">
             <div>
               <strong>Codex Toolkit</strong>
-              <small id="app-version">v1.1.0</small>
+              <small id="app-version">v1.1.2</small>
             </div>
             <div class="about-details">
               <span>Author: moshushi</span>

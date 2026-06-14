@@ -38,6 +38,7 @@ const relayActionStatus = document.getElementById('relay-action-status');
 const relayApplyBtn = document.getElementById('relay-apply-btn');
 const relayRestartBtn = document.getElementById('relay-restart-btn');
 const relayClearBtn = document.getElementById('relay-clear-btn');
+const pluginUnlockBtn = document.getElementById('plugin-unlock-btn');
 const historySyncProvider = document.getElementById('history-sync-provider');
 const historyProvider = document.getElementById('history-provider');
 const historyRolloutPending = document.getElementById('history-rollout-pending');
@@ -47,6 +48,17 @@ const historyProviderList = document.getElementById('history-provider-list');
 const historyActionStatus = document.getElementById('history-action-status');
 const historyStatusBtn = document.getElementById('history-status-btn');
 const historySyncBtn = document.getElementById('history-sync-btn');
+const contextConfigPath = document.getElementById('context-config-path');
+const contextRefreshBtn = document.getElementById('context-refresh-btn');
+const contextTabs = document.querySelectorAll('[data-context-kind]');
+const contextEntryList = document.getElementById('context-entry-list');
+const contextEditorTitle = document.getElementById('context-editor-title');
+const contextNewBtn = document.getElementById('context-new-btn');
+const contextEntryIdInput = document.getElementById('context-entry-id-input');
+const contextEntryBodyInput = document.getElementById('context-entry-body-input');
+const contextDeleteBtn = document.getElementById('context-delete-btn');
+const contextSaveBtn = document.getElementById('context-save-btn');
+const contextActionStatus = document.getElementById('context-action-status');
 const quitBtn = document.getElementById('quit-btn');
 const detailsToggle = document.getElementById('details-toggle');
 const detailsToggleIcon = document.getElementById('details-toggle-icon');
@@ -54,6 +66,8 @@ const tokenBreakdown = document.getElementById('token-breakdown');
 
 const primaryPercent = document.getElementById('primary-percent');
 const secondaryPercent = document.getElementById('secondary-percent');
+const primaryStatLabel = document.querySelector('.stat-card-primary > span');
+const secondaryStatLabel = document.querySelector('.stat-card-secondary > span');
 const primaryMeta = document.getElementById('primary-meta');
 const secondaryMeta = document.getElementById('secondary-meta');
 const primaryMeterFill = document.getElementById('primary-meter-fill');
@@ -101,7 +115,12 @@ let currentWindowHeight = COLLAPSED_HEIGHT;
 let refreshTimer = null;
 let sourcePathRaw = 'Local Codex session logs';
 let currentRelayStatus = null;
+let currentSnapshot = null;
+let initialSnapshotRequested = false;
 let currentLanguage = 'en';
+let currentContextKind = 'plugin';
+let currentContextEntries = null;
+let selectedContextEntry = null;
 
 async function loadAppVersion() {
   if (!appVersion) {
@@ -110,7 +129,7 @@ async function loadAppVersion() {
   try {
     appVersion.textContent = `v${await getVersion()}`;
   } catch (error) {
-    appVersion.textContent = 'v1.1.0';
+    appVersion.textContent = 'v1.1.2';
   }
 }
 
@@ -170,6 +189,24 @@ const I18N = {
     allProviderHistory: 'All provider records',
     historyRecordColumns: 'Total / files / DB',
     historyProviderCounts: (total, files, rows) => `${total} total | ${files} files | ${rows} DB`,
+    contextManagerTitle: 'Tools & plugins',
+    pluginsTab: 'Plugins',
+    newContextEntry: 'New entry',
+    editContextEntry: (id) => `Edit ${id}`,
+    newEntry: 'New',
+    entryIdLabel: 'Entry ID',
+    tomlBodyLabel: 'TOML body',
+    saveEntry: 'Save entry',
+    deleteEntry: 'Delete',
+    editEntry: 'Edit',
+    noContextEntries: 'No entries in this section',
+    loadingContextEntries: 'Reading tools and plugins...',
+    contextEntriesLoaded: (total) => `${total} tool/plugin entr${total === 1 ? 'y' : 'ies'} loaded`,
+    savingContextEntry: 'Saving entry...',
+    togglingContextEntry: 'Updating entry...',
+    deletingContextEntry: 'Deleting entry...',
+    contextEntryIdRequired: 'Entry ID cannot be empty.',
+    contextBodyRequired: 'TOML body cannot be empty.',
     ready: 'Ready',
     settingsNote: 'Source is local Codex session logs. This is not the OpenAI API Usage endpoint and not a remote ChatGPT Plus dashboard.',
     sourcePrefix: 'Source',
@@ -227,6 +264,10 @@ const I18N = {
     applyingRelay: 'Applying relay config...',
     applyingRestart: 'Applying and restarting Codex...',
     restoringOfficial: 'Restoring official endpoint...',
+    unlockPlugins: 'Unlock plugins for API mode',
+    launchUnlockPlugins: 'Launch Codex with plugin unlock',
+    unlockingPlugins: 'Launching Codex with plugin unlock...',
+    pluginsUnlocked: 'Codex launched and plugin unlock injected. Open Plugins in Codex to verify.',
     loadingHistoryStatus: 'Reading history status...',
     syncingHistory: 'Syncing history...',
     historyStatusLoaded: (rollouts, rows) => `${rollouts} rollout file(s), ${rows} SQLite row(s) pending`,
@@ -415,6 +456,10 @@ function applyLanguage(language) {
   if (currentRelayStatus) {
     renderRelayStatus(currentRelayStatus);
   }
+  renderContextEntries();
+  if (!selectedContextEntry) {
+    contextEditorTitle.textContent = t('newContextEntry');
+  }
 }
 
 async function isAutostartEnabled() {
@@ -511,18 +556,35 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 }
 
-function renderBars(values) {
-  dailyBars.innerHTML = '';
-  const peak = Math.max(...values, 1);
+function bucketTotal(bucket) {
+  return Number(firstDefined(bucket?.total_tokens, bucket?.totalTokens, 0)) || 0;
+}
 
-  values.forEach((value, index) => {
+function bucketEvents(bucket) {
+  return Number(firstDefined(bucket?.event_count, bucket?.eventCount, 0)) || 0;
+}
+
+function renderBars(values, options = {}) {
+  dailyBars.innerHTML = '';
+  const rawValues = options.mode === 'tokens' ? values.map(bucketTotal) : values;
+  const peak = Math.max(...rawValues, 1);
+
+  rawValues.forEach((value, index) => {
     const bar = document.createElement('span');
-    const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+    const clamped = options.mode === 'tokens'
+      ? Math.max(0, Number(value) || 0)
+      : Math.max(0, Math.min(100, Number(value) || 0));
     const normalized = peak > 0 ? clamped / peak : 0;
     const height = 6 + normalized * 22;
 
     bar.className = 'bar';
     bar.style.height = `${height}px`;
+    if (options.mode === 'tokens') {
+      const events = bucketEvents(values[index]);
+      bar.title = `${formatNumber(clamped)} tokens | ${events} events`;
+    } else {
+      bar.title = `${Math.round(clamped)}%`;
+    }
 
     if (index === values.length - 1) {
       bar.classList.add('active');
@@ -578,6 +640,12 @@ function applyDetailsPreference(expanded) {
   detailsToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
   detailsToggleIcon.textContent = expanded ? '▲' : '▼';
   localStorage.setItem(DETAILS_STORAGE_KEY, expanded ? '1' : '0');
+}
+
+function buildTokenWeeklyPath(buckets) {
+  const values = buckets.map(bucketTotal);
+  const peak = Math.max(...values, 1);
+  return buildWeeklyPath(values.map((value) => (value / peak) * 100));
 }
 
 function getConfiguredLogDir() {
@@ -645,6 +713,16 @@ function applyLogDir(logDir) {
   localStorage.setItem(LOG_DIR_STORAGE_KEY, logDir);
 }
 
+function requestInitialSnapshot() {
+  if (initialSnapshotRequested) {
+    return;
+  }
+  initialSnapshotRequested = true;
+  updatedAt.textContent = t('readingLogs');
+  setStatus('loading', t('reading'), getConfiguredLogDir() || t('scanningLogs'));
+  loadSnapshot();
+}
+
 function getRelayFormSettings() {
   return {
     enabled: relayEnabledToggle.checked,
@@ -674,8 +752,10 @@ function syncRelayEnabledState() {
 }
 
 function setRelayBusy(isBusy) {
-  [relayApplyBtn, relayRestartBtn, relayClearBtn].forEach((button) => {
-    button.disabled = isBusy;
+  [relayApplyBtn, relayRestartBtn, relayClearBtn, pluginUnlockBtn].forEach((button) => {
+    if (button) {
+      button.disabled = isBusy;
+    }
   });
 }
 
@@ -697,6 +777,7 @@ function setHistoryActionStatus(message, isError = false) {
 
 function renderRelayStatus(status) {
   currentRelayStatus = status || null;
+  syncRelayFormFromStatus(status);
   relayStatusRoute.textContent = status?.route === 'relay' ? t('relay') : t('official');
   relayStatusConfig.textContent = status?.configured ? t('configured') : t('notApplied');
   relayStatusConfig.title = status?.configPath || '';
@@ -704,6 +785,31 @@ function renderRelayStatus(status) {
   relayRouteStatus.textContent =
     status?.route === 'relay' ? status?.baseUrl || t('relayActive') : t('officialEndpoint');
   renderSummaryTokenLabel();
+  if (currentSnapshot) {
+    const routeLabel = getUsageRouteLabel();
+    const sourceDetail = getUsageSourceDetail(currentSnapshot);
+    planText.textContent = `${routeLabel} | ${t('planPrefix')} ${formatPlanName(currentSnapshot.plan_type)}`;
+    sourceText.textContent = t(
+      'tokensFromEvents',
+      routeLabel,
+      snapshotField(currentSnapshot, 'event_count', 'eventCount', 0),
+      snapshotField(currentSnapshot, 'scanned_files', 'scannedFiles', 0)
+    );
+    setStatus('ready', routeLabel, sourceDetail);
+  }
+}
+
+function syncRelayFormFromStatus(status) {
+  if (status?.route !== 'relay') {
+    return;
+  }
+
+  relayEnabledToggle.checked = true;
+  relayProviderIdInput.value = status.providerId || relayProviderIdInput.value || 'moapi';
+  if (status.baseUrl) {
+    relayBaseUrlInput.value = status.baseUrl;
+  }
+  syncRelayEnabledState();
 }
 
 function updateRelayLastApply() {
@@ -733,7 +839,7 @@ async function refreshRelayStatus() {
   try {
     const status = await invoke('relay_status');
     renderRelayStatus(status);
-    await loadHistoryStatus();
+    loadHistoryStatus();
   } catch (error) {
     setRelayActionStatus(String(error), true);
   }
@@ -819,6 +925,242 @@ async function syncHistoryToCurrentProvider() {
   }
 }
 
+function contextEntriesForKind(kind = currentContextKind) {
+  if (!currentContextEntries) {
+    return [];
+  }
+  if (kind === 'mcp') {
+    return currentContextEntries.mcpServers || currentContextEntries.mcp_servers || [];
+  }
+  if (kind === 'skill') {
+    return currentContextEntries.skills || [];
+  }
+  return currentContextEntries.plugins || [];
+}
+
+function allContextEntryCount(entries = currentContextEntries) {
+  if (!entries) {
+    return 0;
+  }
+  return [
+    ...(entries.mcpServers || entries.mcp_servers || []),
+    ...(entries.skills || []),
+    ...(entries.plugins || [])
+  ].length;
+}
+
+function setContextBusy(busy) {
+  [
+    contextRefreshBtn,
+    contextNewBtn,
+    contextEntryIdInput,
+    contextEntryBodyInput,
+    contextDeleteBtn,
+    contextSaveBtn,
+    ...contextTabs
+  ].forEach((element) => {
+    if (element) {
+      element.disabled = busy;
+    }
+  });
+}
+
+function setContextActionStatus(message, isError = false) {
+  if (!contextActionStatus) {
+    return;
+  }
+  contextActionStatus.textContent = message || t('ready');
+  contextActionStatus.classList.toggle('is-error', Boolean(isError));
+}
+
+function selectContextKind(kind) {
+  if (!contextEntryList) {
+    return;
+  }
+  currentContextKind = kind;
+  selectedContextEntry = null;
+  contextTabs.forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.contextKind === kind);
+  });
+  clearContextEditor();
+  renderContextEntries();
+}
+
+function clearContextEditor() {
+  if (!contextEditorTitle || !contextEntryIdInput || !contextEntryBodyInput || !contextDeleteBtn) {
+    return;
+  }
+  selectedContextEntry = null;
+  contextEditorTitle.textContent = t('newContextEntry');
+  contextEntryIdInput.value = '';
+  contextEntryIdInput.disabled = false;
+  contextEntryBodyInput.value = '';
+  contextDeleteBtn.disabled = true;
+}
+
+function editContextEntry(entry) {
+  if (!contextEditorTitle || !contextEntryIdInput || !contextEntryBodyInput || !contextDeleteBtn) {
+    return;
+  }
+  selectedContextEntry = entry;
+  contextEditorTitle.textContent = t('editContextEntry', entry.id);
+  contextEntryIdInput.value = entry.id;
+  contextEntryIdInput.disabled = true;
+  contextEntryBodyInput.value = entry.tomlBody || entry.toml_body || '';
+  contextDeleteBtn.disabled = false;
+  renderContextEntries();
+}
+
+function renderContextEntries() {
+  if (!contextEntryList) {
+    return;
+  }
+  contextEntryList.innerHTML = '';
+  const entries = contextEntriesForKind();
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'context-entry-empty';
+    empty.textContent = t('noContextEntries');
+    contextEntryList.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'context-entry-row';
+    row.classList.toggle('is-selected', selectedContextEntry?.id === entry.id);
+
+    const detail = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = entry.id;
+    const summary = document.createElement('span');
+    summary.textContent = entry.summary || (entry.enabled ? 'enabled' : 'disabled');
+    detail.appendChild(title);
+    detail.appendChild(summary);
+
+    const actions = document.createElement('div');
+    actions.className = 'context-entry-actions';
+
+    const toggle = document.createElement('label');
+    toggle.className = 'switch';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = Boolean(entry.enabled);
+    input.addEventListener('change', () => {
+      toggleContextEntry(entry, input.checked);
+    });
+    const track = document.createElement('span');
+    toggle.appendChild(input);
+    toggle.appendChild(track);
+
+    const edit = document.createElement('button');
+    edit.className = 'mini-btn context-edit-btn';
+    edit.type = 'button';
+    edit.textContent = t('editEntry');
+    edit.addEventListener('click', () => editContextEntry(entry));
+
+    actions.appendChild(toggle);
+    actions.appendChild(edit);
+    row.appendChild(detail);
+    row.appendChild(actions);
+    contextEntryList.appendChild(row);
+  });
+}
+
+function applyContextEntries(entries) {
+  currentContextEntries = entries;
+  if (contextConfigPath) {
+    contextConfigPath.textContent = entries?.configPath || entries?.config_path || '~/.codex/config.toml';
+    contextConfigPath.title = contextConfigPath.textContent;
+  }
+  renderContextEntries();
+}
+
+async function loadContextEntries() {
+  setContextBusy(true);
+  setContextActionStatus(t('loadingContextEntries'));
+  try {
+    const entries = await invoke('list_context_entries');
+    applyContextEntries(entries);
+    setContextActionStatus(t('contextEntriesLoaded', allContextEntryCount(entries)));
+  } catch (error) {
+    setContextActionStatus(String(error), true);
+  } finally {
+    setContextBusy(false);
+    contextDeleteBtn.disabled = !selectedContextEntry;
+  }
+}
+
+async function saveContextEntry() {
+  const id = contextEntryIdInput.value.trim();
+  const tomlBody = contextEntryBodyInput.value.trim();
+  if (!id) {
+    setContextActionStatus(t('contextEntryIdRequired'), true);
+    return;
+  }
+  if (!tomlBody) {
+    setContextActionStatus(t('contextBodyRequired'), true);
+    return;
+  }
+  setContextBusy(true);
+  setContextActionStatus(t('savingContextEntry'));
+  try {
+    const result = await invoke('upsert_context_entry', {
+      input: { kind: currentContextKind, id, tomlBody }
+    });
+    applyContextEntries(result.entries);
+    const entry = contextEntriesForKind().find((item) => item.id === id);
+    if (entry) {
+      editContextEntry(entry);
+    }
+    setContextActionStatus(result.message || t('ready'));
+  } catch (error) {
+    setContextActionStatus(String(error), true);
+  } finally {
+    setContextBusy(false);
+    contextDeleteBtn.disabled = !selectedContextEntry;
+  }
+}
+
+async function toggleContextEntry(entry, enabled) {
+  setContextBusy(true);
+  setContextActionStatus(t('togglingContextEntry'));
+  try {
+    const result = await invoke('toggle_context_entry', {
+      input: { kind: currentContextKind, id: entry.id, enabled }
+    });
+    applyContextEntries(result.entries);
+    setContextActionStatus(result.message || t('ready'));
+  } catch (error) {
+    setContextActionStatus(String(error), true);
+    await loadContextEntries();
+  } finally {
+    setContextBusy(false);
+    contextDeleteBtn.disabled = !selectedContextEntry;
+  }
+}
+
+async function deleteSelectedContextEntry() {
+  if (!selectedContextEntry) {
+    return;
+  }
+  setContextBusy(true);
+  setContextActionStatus(t('deletingContextEntry'));
+  try {
+    const result = await invoke('delete_context_entry', {
+      input: { kind: currentContextKind, id: selectedContextEntry.id }
+    });
+    applyContextEntries(result.entries);
+    clearContextEditor();
+    setContextActionStatus(result.message || t('ready'));
+  } catch (error) {
+    setContextActionStatus(String(error), true);
+  } finally {
+    setContextBusy(false);
+    contextDeleteBtn.disabled = !selectedContextEntry;
+  }
+}
+
 async function loadRelaySettings() {
   try {
     const settings = await invoke('load_relay_settings');
@@ -890,6 +1232,22 @@ async function clearRelayConfig() {
   try {
     const result = await invoke('clear_relay_config');
     setRelayActionStatus(result.message || 'Official endpoint restored.');
+    await refreshRelayStatus();
+  } catch (error) {
+    setRelayActionStatus(String(error), true);
+  } finally {
+    setRelayBusy(false);
+  }
+}
+
+async function unlockCodexPlugins() {
+  setRelayBusy(true);
+  setRelayActionStatus(t('unlockingPlugins'));
+  try {
+    const result = await invoke('unlock_codex_plugins', {
+      request: { debugPort: 9229, restartCodex: true }
+    });
+    setRelayActionStatus(result.message || t('pluginsUnlocked'));
     await refreshRelayStatus();
   } catch (error) {
     setRelayActionStatus(String(error), true);
@@ -1062,8 +1420,15 @@ async function maybeSnapToEdges() {
 }
 
 function renderSnapshot(snapshot) {
+  currentSnapshot = snapshot;
   const latestAt = new Date(snapshotField(snapshot, 'last_event_at', 'lastEventAt', 0) * 1000);
-  const weeklyD = buildWeeklyPath(snapshotField(snapshot, 'weekly_secondary_percents', 'weeklySecondaryPercents', []));
+  const usageMode = snapshotField(snapshot, 'usage_mode', 'usageMode', 'rate_limit');
+  const isTokenUsageMode = usageMode === 'token_usage';
+  const hourlyTokenBuckets = snapshotField(snapshot, 'hourly_token_buckets', 'hourlyTokenBuckets', []);
+  const weeklyTokenBuckets = snapshotField(snapshot, 'weekly_token_buckets', 'weeklyTokenBuckets', []);
+  const weeklyD = isTokenUsageMode
+    ? buildTokenWeeklyPath(weeklyTokenBuckets)
+    : buildWeeklyPath(snapshotField(snapshot, 'weekly_secondary_percents', 'weeklySecondaryPercents', []));
   const totalUsage = snapshotField(snapshot, 'total_usage', 'totalUsage', null);
   const lastUsage = snapshotField(snapshot, 'last_usage', 'lastUsage', null);
   const totalTokenValue = tokenTotal(totalUsage) ?? tokenTotal(lastUsage);
@@ -1084,16 +1449,50 @@ function renderSnapshot(snapshot) {
   sourceText.textContent = t('tokensFromEvents', routeLabel, snapshotField(snapshot, 'event_count', 'eventCount', 0), snapshotField(snapshot, 'scanned_files', 'scannedFiles', 0));
   setStatus('ready', routeLabel, sourceDetail);
 
-  primaryPercent.textContent = `${primaryUsed}%`;
-  secondaryPercent.textContent = `${secondaryUsed}%`;
-  primaryMeta.textContent = `${t('used')} ${primaryUsed}% | ${t('resets')} ${formatReset(snapshot.primary.resets_at)}`;
-  secondaryMeta.textContent = `${t('used')} ${secondaryUsed}% | ${t('resets')} ${formatReset(snapshot.secondary.resets_at)}`;
-  primaryMeterFill.style.width = `${primaryUsed}%`;
-  secondaryMeterFill.style.width = `${secondaryUsed}%`;
-  primaryRemaining.textContent = t('remainingWindow', primaryRemainingPercent, snapshot.primary.window_minutes / 60);
-  secondaryRemaining.textContent = t('remainingWeek', secondaryRemainingPercent);
-  primaryReset.textContent = `5 hour window ${snapshot.primary.window_minutes / 60}h`;
-  secondaryReset.textContent = formatReset(snapshot.secondary.resets_at);
+  if (isTokenUsageMode) {
+    const token24hTotal = snapshotField(snapshot, 'token_24h_total', 'token24hTotal', 0);
+    const token24hEvents = snapshotField(snapshot, 'token_24h_events', 'token24hEvents', 0);
+    const tokenCurrentHourTotal = snapshotField(snapshot, 'token_current_hour_total', 'tokenCurrentHourTotal', 0);
+    const tokenPeakHourTotal = snapshotField(snapshot, 'token_peak_hour_total', 'tokenPeakHourTotal', 0);
+    const weeklyTokenTotal = weeklyTokenBuckets.reduce((sum, bucket) => sum + bucketTotal(bucket), 0);
+    const peakPercent = tokenPeakHourTotal > 0 ? Math.round((tokenCurrentHourTotal / tokenPeakHourTotal) * 100) : 0;
+    const weekPeak = Math.max(...weeklyTokenBuckets.map(bucketTotal), 1);
+    const weekPercent = Math.round((weeklyTokenBuckets.at(-1) ? bucketTotal(weeklyTokenBuckets.at(-1)) : 0) / weekPeak * 100);
+
+    if (primaryStatLabel) {
+      primaryStatLabel.textContent = '24h Tokens';
+    }
+    if (secondaryStatLabel) {
+      secondaryStatLabel.textContent = '7d Tokens';
+    }
+    primaryPercent.textContent = formatCompactNumber(token24hTotal);
+    secondaryPercent.textContent = formatCompactNumber(weeklyTokenTotal);
+    primaryMeta.textContent = `24h | ${formatNumber(token24hEvents)} events`;
+    secondaryMeta.textContent = `7d | peak ${formatCompactNumber(weekPeak)}`;
+    primaryMeterFill.style.width = `${Math.max(4, Math.min(100, peakPercent))}%`;
+    secondaryMeterFill.style.width = `${Math.max(4, Math.min(100, weekPercent))}%`;
+    primaryRemaining.textContent = `Current hour ${formatCompactNumber(tokenCurrentHourTotal)} tokens`;
+    secondaryRemaining.textContent = `Peak hour ${formatCompactNumber(tokenPeakHourTotal)} tokens`;
+    primaryReset.textContent = `24h tokens ${formatNumber(token24hTotal)}`;
+    secondaryReset.textContent = `7d tokens ${formatNumber(weeklyTokenTotal)}`;
+  } else {
+    if (primaryStatLabel) {
+      primaryStatLabel.textContent = t('fiveHourWindow');
+    }
+    if (secondaryStatLabel) {
+      secondaryStatLabel.textContent = t('weeklyWindow');
+    }
+    primaryPercent.textContent = `${primaryUsed}%`;
+    secondaryPercent.textContent = `${secondaryUsed}%`;
+    primaryMeta.textContent = `${t('used')} ${primaryUsed}% | ${t('resets')} ${formatReset(snapshot.primary.resets_at)}`;
+    secondaryMeta.textContent = `${t('used')} ${secondaryUsed}% | ${t('resets')} ${formatReset(snapshot.secondary.resets_at)}`;
+    primaryMeterFill.style.width = `${primaryUsed}%`;
+    secondaryMeterFill.style.width = `${secondaryUsed}%`;
+    primaryRemaining.textContent = t('remainingWindow', primaryRemainingPercent, snapshot.primary.window_minutes / 60);
+    secondaryRemaining.textContent = t('remainingWeek', secondaryRemainingPercent);
+    primaryReset.textContent = `5 hour window ${snapshot.primary.window_minutes / 60}h`;
+    secondaryReset.textContent = formatReset(snapshot.secondary.resets_at);
+  }
 
   totalTokens.textContent = formatCompactNumber(mainTokenValue);
   totalTokens.title = formatNumber(mainTokenValue);
@@ -1119,7 +1518,12 @@ function renderSnapshot(snapshot) {
     minute: '2-digit'
   })} (${eventLabel})`;
 
-  renderBars(snapshotField(snapshot, 'hourly_primary_percents', 'hourlyPrimaryPercents', []));
+  renderBars(
+    isTokenUsageMode
+      ? hourlyTokenBuckets
+      : snapshotField(snapshot, 'hourly_primary_percents', 'hourlyPrimaryPercents', []),
+    { mode: isTokenUsageMode ? 'tokens' : 'percent' }
+  );
   weeklyPath.setAttribute('d', weeklyD);
   weeklyShadow.setAttribute('d', weeklyD);
 
@@ -1193,6 +1597,7 @@ settingsBtn.addEventListener('click', () => {
 refreshBtn.addEventListener('click', () => {
   loadSnapshot();
 });
+window.setTimeout(requestInitialSnapshot, 0);
 
 themeToggle.addEventListener('change', (event) => {
   applyTheme(event.target.checked);
@@ -1260,12 +1665,38 @@ relayClearBtn.addEventListener('click', () => {
   clearRelayConfig();
 });
 
+pluginUnlockBtn?.addEventListener('click', () => {
+  unlockCodexPlugins();
+});
+
 historyStatusBtn.addEventListener('click', () => {
   loadHistoryStatus();
 });
 
 historySyncBtn.addEventListener('click', () => {
   syncHistoryToCurrentProvider();
+});
+
+contextRefreshBtn?.addEventListener('click', () => {
+  loadContextEntries();
+});
+
+contextTabs.forEach((button) => {
+  button.addEventListener('click', () => {
+    selectContextKind(button.dataset.contextKind);
+  });
+});
+
+contextNewBtn?.addEventListener('click', () => {
+  clearContextEditor();
+});
+
+contextSaveBtn?.addEventListener('click', () => {
+  saveContextEntry();
+});
+
+contextDeleteBtn?.addEventListener('click', () => {
+  deleteSelectedContextEntry();
 });
 
 autostartToggle.addEventListener('change', async (event) => {
@@ -1296,11 +1727,13 @@ quitBtn.addEventListener('click', async () => {
   await invoke('quit_app');
 });
 
-await appWindow.onMoved(() => {
-  window.setTimeout(() => {
-    maybeSnapToEdges().catch(console.error);
-  }, 60);
-});
+if (typeof appWindow.onMoved === 'function') {
+  appWindow.onMoved(() => {
+    window.setTimeout(() => {
+      maybeSnapToEdges().catch(console.error);
+    }, 60);
+  }).catch(console.error);
+}
 
 applyLanguage(getInitialLanguage());
 applyTheme(localStorage.getItem(THEME_STORAGE_KEY) === '1');
@@ -1309,10 +1742,14 @@ applyLogDir(getConfiguredLogDir());
 applySummaryMode(getSummaryMode());
 applyRefreshInterval(getRefreshIntervalMs());
 applyPrivacyMode(isPrivacyModeEnabled());
-await loadAppVersion();
-await loadRelaySettings();
 const detailsExpanded = localStorage.getItem(DETAILS_STORAGE_KEY) === '1';
 applyDetailsPreference(detailsExpanded);
-await syncWindowHeight(detailsExpanded);
-await syncAutostartState();
-await loadSnapshot();
+window.setTimeout(requestInitialSnapshot, 0);
+loadAppVersion();
+syncWindowHeight(detailsExpanded).catch(console.error);
+loadRelaySettings();
+if (contextEntryList) {
+  selectContextKind('plugin');
+  loadContextEntries();
+}
+syncAutostartState();

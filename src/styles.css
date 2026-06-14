@@ -546,6 +546,13 @@ body.dark .select-input {
   padding: 7px 8px;
 }
 
+.compact-btn {
+  width: auto;
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
 .relay-btn-primary {
   color: #ffffff;
   border-color: transparent;
@@ -589,6 +596,110 @@ body.dark .relay-btn-danger {
 
 .relay-action-status.is-error {
   color: #c93333;
+}
+
+.context-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chip-bg);
+}
+
+.context-tab {
+  min-height: 27px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-sub);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.context-tab.is-active {
+  color: #ffffff;
+  background: var(--blue);
+}
+
+.context-entry-list {
+  display: grid;
+  gap: 6px;
+  max-height: 154px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.context-entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chip-bg);
+}
+
+.context-entry-row.is-selected {
+  border-color: var(--blue);
+}
+
+.context-entry-row strong,
+.context-entry-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-entry-row strong {
+  font-size: 11px;
+}
+
+.context-entry-row span,
+.context-entry-empty {
+  color: var(--text-sub);
+  font-size: 10px;
+}
+
+.context-entry-empty {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.context-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-edit-btn {
+  min-width: 38px;
+}
+
+.context-editor {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.context-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.context-body-input {
+  min-height: 104px;
+  resize: vertical;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  line-height: 1.35;
 }
 
 .settings-note {

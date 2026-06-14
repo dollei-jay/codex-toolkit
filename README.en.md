@@ -174,6 +174,8 @@ Copy-Item src\renderer.js $tmp -Force
 node --check $tmp
 ```
 
+Detailed release notes are tracked in [CHANGELOG.md](./CHANGELOG.md).
+
 ## Release Automation
 
 This repository includes two GitHub Actions workflows:

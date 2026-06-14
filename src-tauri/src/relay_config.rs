@@ -79,7 +79,8 @@ pub struct ApplyAndRestartResult {
 }
 
 pub fn load_relay_settings_from_default() -> Result<RelaySettings, String> {
-    load_relay_settings_from_path(&relay_settings_path()?)
+    let saved = load_relay_settings_from_path(&relay_settings_path()?)?;
+    Ok(load_relay_settings_from_home(&codex_home_dir()?, saved))
 }
 
 pub fn save_relay_settings_to_default(settings: RelaySettings) -> Result<RelaySettings, String> {
@@ -96,8 +97,12 @@ pub fn clear_relay_config_from_default() -> Result<RelayApplyResult, String> {
 }
 
 pub fn relay_status_from_default() -> Result<RelayStatus, String> {
-    let settings = load_relay_settings_from_default().unwrap_or_default();
-    Ok(relay_status_from_home(&codex_home_dir()?, &settings))
+    let home = codex_home_dir()?;
+    let settings = load_relay_settings_from_home(
+        &home,
+        load_relay_settings_from_path(&relay_settings_path()?).unwrap_or_default(),
+    );
+    Ok(relay_status_from_home(&home, &settings))
 }
 
 pub fn apply_relay_config_and_restart_default(
@@ -172,6 +177,38 @@ fn load_relay_settings_from_path(path: &Path) -> Result<RelaySettings, String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(RelaySettings::default()),
         Err(error) => Err(error.to_string()),
     }
+}
+
+fn load_relay_settings_from_home(home: &Path, saved: RelaySettings) -> RelaySettings {
+    let config_path = home.join("config.toml");
+    let contents = fs::read_to_string(&config_path).unwrap_or_default();
+    settings_from_active_config(&contents, &saved).unwrap_or(saved)
+}
+
+fn settings_from_active_config(contents: &str, saved: &RelaySettings) -> Option<RelaySettings> {
+    let doc = parse_toml(contents).ok()?;
+    let provider_id = doc
+        .get("model_provider")
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let provider = doc
+        .get("model_providers")?
+        .as_table()?
+        .get(provider_id)?
+        .as_table()?;
+    let base_url = provider_value(&doc, provider, "base_url")?;
+    let api_key = provider_value(&doc, provider, "experimental_bearer_token")
+        .or_else(|| provider_value(&doc, provider, "api_key"))
+        .unwrap_or_default();
+
+    Some(RelaySettings {
+        enabled: true,
+        provider_id: provider_id.to_string(),
+        base_url: base_url.to_string(),
+        api_key: api_key.to_string(),
+        test_model: saved.test_model.clone(),
+    })
 }
 
 fn save_relay_settings_to_path(
@@ -267,25 +304,20 @@ fn relay_status_from_home(home: &Path, settings: &RelaySettings) -> RelayStatus 
     let contents = fs::read_to_string(&config_path).unwrap_or_default();
     let configured_provider_id = configured_provider_id(&contents, settings);
     let provider = relay_provider_table(&contents, &configured_provider_id);
-    let base_url = provider
-        .as_ref()
-        .and_then(|doc| doc.get("base_url"))
-        .and_then(|item| item.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let has_base_url = provider
-        .as_ref()
-        .and_then(|doc| doc.get("base_url"))
-        .and_then(|item| item.as_str())
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-    let has_api_key = provider
-        .as_ref()
-        .and_then(|doc| doc.get("experimental_bearer_token"))
-        .and_then(|item| item.as_str())
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
+    let doc = parse_toml(&contents).ok();
+    let base_url = doc.as_ref().and_then(|doc| {
+        provider
+            .as_ref()
+            .and_then(|provider| provider_value(doc, provider, "base_url"))
+    });
+    let api_key = doc.as_ref().and_then(|doc| {
+        provider.as_ref().and_then(|provider| {
+            provider_value(doc, provider, "experimental_bearer_token")
+                .or_else(|| provider_value(doc, provider, "api_key"))
+        })
+    });
+    let has_base_url = base_url.is_some();
+    let has_api_key = api_key.is_some();
     let configured = !configured_provider_id.is_empty() && has_base_url && has_api_key;
 
     RelayStatus {
@@ -300,9 +332,19 @@ fn relay_status_from_home(home: &Path, settings: &RelaySettings) -> RelayStatus 
         base_url,
         has_base_url,
         has_api_key,
-        masked_api_key: mask_api_key(&settings.api_key),
+        masked_api_key: api_key.as_deref().and_then(mask_api_key),
         codex_running: codex_running(),
     }
+}
+
+fn provider_value(doc: &DocumentMut, provider: &toml_edit::Table, key: &str) -> Option<String> {
+    provider
+        .get(key)
+        .or_else(|| doc.get(key))
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_toml(contents: &str) -> Result<DocumentMut, String> {
@@ -382,17 +424,35 @@ fn relay_provider_table(contents: &str, provider_id: &str) -> Option<toml_edit::
 
 fn configured_provider_id(contents: &str, settings: &RelaySettings) -> String {
     let settings_provider_id = normalize_provider_id(&settings.provider_id);
-    let root_provider = parse_toml(contents).ok().and_then(|doc| {
-        doc.get("model_provider")
-            .and_then(|item| item.as_str())
-            .map(str::to_string)
-    });
+    let doc = match parse_toml(contents) {
+        Ok(doc) => doc,
+        Err(_) => return String::new(),
+    };
+    let root_provider = doc
+        .get("model_provider")
+        .and_then(|item| item.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
 
     match root_provider.as_deref() {
         Some(provider)
             if provider == settings_provider_id
                 || provider == DEFAULT_RELAY_PROVIDER
                 || provider == LEGACY_RELAY_PROVIDER =>
+        {
+            provider.to_string()
+        }
+        Some(provider)
+            if doc
+                .get("model_providers")
+                .and_then(|item| item.as_table())
+                .and_then(|providers| providers.get(provider))
+                .and_then(|item| item.as_table())
+                .and_then(|table| table.get("base_url"))
+                .and_then(|item| item.as_str())
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false) =>
         {
             provider.to_string()
         }
@@ -640,6 +700,70 @@ goals = true
     }
 
     #[test]
+    fn load_relay_settings_prefers_active_config_provider() {
+        let temp = tempfile::tempdir().unwrap();
+        let saved = RelaySettings {
+            enabled: false,
+            provider_id: "old_provider".to_string(),
+            base_url: "https://old.example.test/v1".to_string(),
+            api_key: "sk-old-value".to_string(),
+            test_model: Some("gpt-5-mini".to_string()),
+        };
+        fs::write(
+            temp.path().join("config.toml"),
+            r#"model_provider = "custom_provider"
+
+[model_providers.custom_provider]
+name = "custom_provider"
+wire_api = "responses"
+base_url = "https://active.example.test/v1"
+experimental_bearer_token = "sk-active-value"
+"#,
+        )
+        .unwrap();
+
+        let loaded = load_relay_settings_from_home(temp.path(), saved);
+
+        assert!(loaded.enabled);
+        assert_eq!(loaded.provider_id, "custom_provider");
+        assert_eq!(loaded.base_url, "https://active.example.test/v1");
+        assert_eq!(loaded.api_key, "sk-active-value");
+        assert_eq!(loaded.test_model, Some("gpt-5-mini".to_string()));
+    }
+
+    #[test]
+    fn load_relay_settings_falls_back_to_root_provider_fields() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("config.toml"),
+            r#"model_provider = "moapi"
+base_url = "https://root.example.test/v1"
+api_key = "sk-root-value"
+
+[model_providers.moapi]
+name = "moapi"
+wire_api = "responses"
+"#,
+        )
+        .unwrap();
+
+        let loaded = load_relay_settings_from_home(temp.path(), RelaySettings::default());
+        let status = relay_status_from_home(temp.path(), &loaded);
+
+        assert!(loaded.enabled);
+        assert_eq!(loaded.provider_id, "moapi");
+        assert_eq!(loaded.base_url, "https://root.example.test/v1");
+        assert_eq!(loaded.api_key, "sk-root-value");
+        assert!(status.configured);
+        assert_eq!(status.route, "relay");
+        assert_eq!(
+            status.base_url,
+            Some("https://root.example.test/v1".to_string())
+        );
+        assert_eq!(status.masked_api_key, Some("sk...alue".to_string()));
+    }
+
+    #[test]
     fn apply_relay_config_uses_custom_provider_id() {
         let temp = tempfile::tempdir().unwrap();
         let mut settings = relay_settings();
@@ -651,5 +775,35 @@ goals = true
         assert!(config.contains(r#"model_provider = "custom_provider""#));
         assert!(config.contains("[model_providers.custom_provider]"));
         assert!(config.contains(r#"name = "custom_provider""#));
+    }
+
+    #[test]
+    fn relay_status_detects_active_custom_provider_from_config() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("config.toml"),
+            r#"model_provider = "custom_provider"
+
+[model_providers.custom_provider]
+name = "custom_provider"
+wire_api = "responses"
+base_url = "https://active.example.test/v1"
+experimental_bearer_token = "sk-active-value"
+"#,
+        )
+        .unwrap();
+
+        let settings = load_relay_settings_from_home(temp.path(), RelaySettings::default());
+        let status = relay_status_from_home(temp.path(), &settings);
+
+        assert!(status.configured);
+        assert_eq!(status.route, "relay");
+        assert_eq!(status.provider_id, "custom_provider");
+        assert_eq!(
+            status.base_url,
+            Some("https://active.example.test/v1".to_string())
+        );
+        assert!(status.has_api_key);
+        assert_eq!(status.masked_api_key, Some("sk...alue".to_string()));
     }
 }

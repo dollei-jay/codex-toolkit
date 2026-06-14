@@ -15,7 +15,9 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+mod context_config;
 mod history_sync;
+mod plugin_unlock;
 mod relay_config;
 
 #[derive(Clone, Serialize)]
@@ -49,6 +51,27 @@ struct ProviderTokenSummary {
     last_event_at: Option<i64>,
 }
 
+#[derive(Clone, Default, Serialize)]
+struct TokenBucket {
+    input_tokens: u64,
+    cached_input_tokens: u64,
+    output_tokens: u64,
+    reasoning_output_tokens: u64,
+    total_tokens: u64,
+    event_count: usize,
+}
+
+impl TokenBucket {
+    fn add_usage(&mut self, usage: &TokenUsage) {
+        self.input_tokens += usage.input_tokens;
+        self.cached_input_tokens += usage.cached_input_tokens;
+        self.output_tokens += usage.output_tokens;
+        self.reasoning_output_tokens += usage.reasoning_output_tokens;
+        self.total_tokens += usage.total_tokens;
+        self.event_count += 1;
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct RateLimitState {
     used_percent: f64,
@@ -68,6 +91,13 @@ struct UsageSnapshot {
     last_usage: Option<TokenUsage>,
     hourly_primary_percents: Vec<f64>,
     weekly_secondary_percents: Vec<f64>,
+    hourly_token_buckets: Vec<TokenBucket>,
+    weekly_token_buckets: Vec<TokenBucket>,
+    usage_mode: String,
+    token_24h_total: u64,
+    token_24h_events: usize,
+    token_current_hour_total: u64,
+    token_peak_hour_total: u64,
     event_count: usize,
     scanned_files: usize,
     model_context_window: Option<u64>,
@@ -320,6 +350,53 @@ fn build_weekly_series(events: &[UsageEvent], now: DateTime<Utc>) -> Vec<f64> {
         .collect()
 }
 
+fn event_token_usage(event: &UsageEvent) -> Option<&TokenUsage> {
+    event.last_usage.as_ref().or(event.total_usage.as_ref())
+}
+
+fn build_hourly_token_buckets(events: &[UsageEvent], now: DateTime<Utc>) -> Vec<TokenBucket> {
+    (0..24)
+        .map(|index| {
+            let slot_end = now - Duration::hours((23 - index) as i64);
+            let slot_start = slot_end - Duration::hours(1);
+            let mut bucket = TokenBucket::default();
+            for event in events {
+                if event.timestamp > slot_start && event.timestamp <= slot_end {
+                    if let Some(usage) = event_token_usage(event) {
+                        bucket.add_usage(usage);
+                    }
+                }
+            }
+            bucket
+        })
+        .collect()
+}
+
+fn build_weekly_token_buckets(events: &[UsageEvent], now: DateTime<Utc>) -> Vec<TokenBucket> {
+    let today = now.date_naive();
+
+    (0..7)
+        .map(|index| {
+            let day = today - Duration::days((6 - index) as i64);
+            let day_start = day.and_hms_opt(0, 0, 0).unwrap().and_utc();
+            let day_end = day.and_hms_opt(23, 59, 59).unwrap().and_utc();
+            let mut bucket = TokenBucket::default();
+            for event in events {
+                if event.timestamp >= day_start && event.timestamp <= day_end {
+                    if let Some(usage) = event_token_usage(event) {
+                        bucket.add_usage(usage);
+                    }
+                }
+            }
+            bucket
+        })
+        .collect()
+}
+
+fn is_relay_usage_provider(provider: &str) -> bool {
+    !provider.eq_ignore_ascii_case("openai") && provider != "unknown"
+}
+
 fn build_provider_token_summaries(
     events: &[UsageEvent],
     configured_providers: &[String],
@@ -393,6 +470,30 @@ fn build_snapshot(custom_dir: Option<String>) -> Result<UsageSnapshot, String> {
         .cloned()
         .ok_or_else(|| "No Codex usage events were found".to_string())?;
     let now = Utc::now();
+    let usage_mode = if is_relay_usage_provider(&latest.provider) {
+        "token_usage"
+    } else {
+        "rate_limit"
+    };
+    let hourly_token_buckets = build_hourly_token_buckets(&events, now);
+    let weekly_token_buckets = build_weekly_token_buckets(&events, now);
+    let token_24h_total = hourly_token_buckets
+        .iter()
+        .map(|bucket| bucket.total_tokens)
+        .sum();
+    let token_24h_events = hourly_token_buckets
+        .iter()
+        .map(|bucket| bucket.event_count)
+        .sum();
+    let token_current_hour_total = hourly_token_buckets
+        .last()
+        .map(|bucket| bucket.total_tokens)
+        .unwrap_or(0);
+    let token_peak_hour_total = hourly_token_buckets
+        .iter()
+        .map(|bucket| bucket.total_tokens)
+        .max()
+        .unwrap_or(0);
 
     Ok(UsageSnapshot {
         generated_at: now.timestamp(),
@@ -405,6 +506,13 @@ fn build_snapshot(custom_dir: Option<String>) -> Result<UsageSnapshot, String> {
         last_usage: latest.last_usage,
         hourly_primary_percents: build_hourly_series(&events, now),
         weekly_secondary_percents: build_weekly_series(&events, now),
+        hourly_token_buckets,
+        weekly_token_buckets,
+        usage_mode: usage_mode.to_string(),
+        token_24h_total,
+        token_24h_events,
+        token_current_hour_total,
+        token_peak_hour_total,
         event_count: events.len(),
         scanned_files,
         model_context_window: latest.model_context_window,
@@ -420,7 +528,7 @@ mod tests {
     fn parses_token_count_event_with_usage_fields() {
         let line = r#"{"timestamp":"2026-04-24T12:34:56.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":240,"reasoning_output_tokens":32,"total_tokens":1440},"last_token_usage":{"input_tokens":300,"cached_input_tokens":120,"output_tokens":90,"reasoning_output_tokens":12,"total_tokens":390},"model_context_window":258400},"rate_limits":{"plan_type":"plus","primary":{"used_percent":47.0,"window_minutes":300,"resets_at":1777000000},"secondary":{"used_percent":24.0,"window_minutes":10080,"resets_at":1777600000}}}}"#;
 
-        let event = parse_event(line).expect("event should parse");
+        let event = parse_event_with_provider(line, "openai").expect("event should parse");
 
         assert_eq!(event.plan_type, "plus");
         assert_eq!(event.primary.window_minutes, 300);
@@ -433,7 +541,68 @@ mod tests {
     #[test]
     fn ignores_non_token_count_events() {
         let line = r#"{"timestamp":"2026-04-24T12:34:56.000Z","type":"event_msg","payload":{"type":"agent_message","message":"hello"}}"#;
-        assert!(parse_event(line).is_none());
+        assert!(parse_event_with_provider(line, "openai").is_none());
+    }
+
+    fn test_usage(total_tokens: u64) -> TokenUsage {
+        TokenUsage {
+            input_tokens: total_tokens / 2,
+            cached_input_tokens: 0,
+            output_tokens: total_tokens / 2,
+            reasoning_output_tokens: 0,
+            total_tokens,
+        }
+    }
+
+    fn test_event(timestamp: DateTime<Utc>, provider: &str, total_tokens: u64) -> UsageEvent {
+        UsageEvent {
+            timestamp,
+            provider: provider.to_string(),
+            plan_type: "unknown".to_string(),
+            primary: empty_rate_limit(),
+            secondary: empty_rate_limit(),
+            total_usage: Some(test_usage(total_tokens)),
+            last_usage: Some(test_usage(total_tokens)),
+            model_context_window: None,
+        }
+    }
+
+    #[test]
+    fn builds_hourly_token_buckets_for_last_24_hours() {
+        let now = DateTime::parse_from_rfc3339("2026-06-13T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let events = vec![
+            test_event(now - Duration::minutes(20), "moapi", 100),
+            test_event(
+                now - Duration::hours(1) - Duration::minutes(20),
+                "moapi",
+                250,
+            ),
+            test_event(now - Duration::hours(25), "moapi", 999),
+        ];
+
+        let buckets = build_hourly_token_buckets(&events, now);
+
+        assert_eq!(buckets.len(), 24);
+        assert_eq!(buckets[23].total_tokens, 100);
+        assert_eq!(buckets[23].event_count, 1);
+        assert_eq!(buckets[22].total_tokens, 250);
+        assert_eq!(
+            buckets
+                .iter()
+                .map(|bucket| bucket.total_tokens)
+                .sum::<u64>(),
+            350
+        );
+    }
+
+    #[test]
+    fn relay_provider_uses_token_usage_mode() {
+        assert!(!is_relay_usage_provider("openai"));
+        assert!(is_relay_usage_provider("moapi"));
+        assert!(is_relay_usage_provider("songsongcard"));
+        assert!(!is_relay_usage_provider("unknown"));
     }
 }
 
@@ -498,6 +667,39 @@ fn sync_history_to_provider(
     provider: Option<String>,
 ) -> Result<history_sync::HistorySyncResult, String> {
     history_sync::sync_history_to_provider_default(provider)
+}
+
+#[tauri::command]
+fn list_context_entries() -> Result<context_config::ContextEntries, String> {
+    context_config::list_context_entries_from_default()
+}
+
+#[tauri::command]
+fn upsert_context_entry(
+    input: context_config::ContextEntryInput,
+) -> Result<context_config::ContextApplyResult, String> {
+    context_config::upsert_context_entry_default(input)
+}
+
+#[tauri::command]
+fn toggle_context_entry(
+    input: context_config::ContextToggleInput,
+) -> Result<context_config::ContextApplyResult, String> {
+    context_config::toggle_context_entry_default(input)
+}
+
+#[tauri::command]
+fn delete_context_entry(
+    input: context_config::ContextDeleteInput,
+) -> Result<context_config::ContextApplyResult, String> {
+    context_config::delete_context_entry_default(input)
+}
+
+#[tauri::command]
+fn unlock_codex_plugins(
+    request: plugin_unlock::UnlockRequest,
+) -> Result<plugin_unlock::UnlockResult, String> {
+    plugin_unlock::unlock_plugins_default(request)
 }
 
 fn restore_main_window(app: &tauri::AppHandle) {
@@ -581,7 +783,12 @@ pub fn run() {
             restart_codex_app,
             apply_relay_config_and_restart,
             history_sync_status,
-            sync_history_to_provider
+            sync_history_to_provider,
+            list_context_entries,
+            upsert_context_entry,
+            toggle_context_entry,
+            delete_context_entry,
+            unlock_codex_plugins
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
