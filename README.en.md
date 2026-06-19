@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="./docs/images/relay-management.png" alt="Codex Toolkit relay management panel" width="420" />
+  <img src="./docs/images/local-router-config.png" alt="Codex Toolkit local router configuration panel" width="420" />
 </p>
 
 <p align="center">
@@ -29,15 +29,15 @@ Currently tested mainly on Windows. macOS compatibility has not been fully verif
 ## Screenshots
 
 <p>
-  <img src="./docs/images/relay-management.png" alt="Codex Toolkit relay configuration panel" width="31%" />
+  <img src="./docs/images/local-router-config.png" alt="Codex Toolkit local router configuration panel" width="31%" />
+  <img src="./docs/images/relay-token-trends.png" alt="Codex Toolkit relay token usage trends" width="31%" />
   <img src="./docs/images/history-sync.png" alt="Codex Toolkit history sync panel with provider records" width="31%" />
-  <img src="./docs/images/about-panel.png" alt="Codex Toolkit about panel with version and GitHub link" width="31%" />
 </p>
 
 <p>
+  <img src="./docs/images/relay-management.png" alt="Codex Toolkit relay configuration panel" width="31%" />
   <img src="./docs/images/app-screenshot.png" alt="Codex Toolkit dark dashboard" width="31%" />
-  <img src="./docs/images/dashboard-view.png" alt="Codex Toolkit light dashboard" width="31%" />
-  <img src="./docs/images/settings-dark-view.png" alt="Codex Toolkit dark settings" width="31%" />
+  <img src="./docs/images/about-panel.png" alt="Codex Toolkit about panel with version and GitHub link" width="31%" />
 </p>
 
 ## Quick Start
