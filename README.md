@@ -247,6 +247,17 @@ Codex Toolkit 读取的是你本机的 Codex 会话日志和本地 Codex SQLite 
 
 API Key 会保存在本地工具设置文件中，只有应用中转站配置时才会写入 Codex 配置。历史同步会改写本机会话元数据和本地 SQLite provider 标记，执行前会自动备份。分享截图时请避免暴露完整本地路径或敏感中转站信息，也可以使用内置隐私开关。
 
+## 反馈与支持
+
+如果你在使用中遇到问题，或希望加入问题反馈交流群，可以添加微信联系。这个项目会持续围绕 Codex 的本地使用体验做改进，欢迎反馈真实场景里的问题。
+
+如果 Codex Toolkit 对你有帮助，也可以通过赞赏码支持一下维护工作。感谢每一份反馈和支持。
+
+<p>
+  <img src="./docs/images/wechat-contact.png" alt="微信联系二维码" width="220" />
+  <img src="./docs/images/sponsor-qr.jpg" alt="赞赏支持二维码" width="220" />
+</p>
+
 ## 贡献
 
 提交 Pull Request 前请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

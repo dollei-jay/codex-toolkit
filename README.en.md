@@ -249,6 +249,17 @@ Codex Toolkit reads local session logs and the local Codex SQLite state database
 
 API keys are stored locally in the toolkit settings file and written to Codex config only when you apply relay settings. History sync rewrites local session metadata and local SQLite provider markers, with automatic backups before changes are applied. Avoid sharing screenshots that reveal full local paths or sensitive relay details; use the built-in privacy toggle when needed.
 
+## Feedback and Support
+
+If you run into issues or want to join the feedback group, add the WeChat contact below. Codex Toolkit will keep improving around real Codex desktop workflows, so reports from actual usage are especially helpful.
+
+If the project helps you, you can also use the sponsor code below to support maintenance. Thank you for every report, suggestion, and bit of support.
+
+<p>
+  <img src="./docs/images/wechat-contact.png" alt="WeChat contact QR code" width="220" />
+  <img src="./docs/images/sponsor-qr.jpg" alt="Sponsor QR code" width="220" />
+</p>
+
 ## Contributing
 
 Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
