@@ -20,7 +20,9 @@
   <a href="#开发">开发</a>
 </p>
 
-Codex Toolkit 会读取本地 Codex 会话日志，把 token 使用情况整理成一个紧凑的桌面仪表盘，并按 provider 汇总历史 token。当 Codex 使用中转站 provider 时，应用会根据本地 `token_count` 事件重建 24 小时和 7 天 token 用量趋势，即使没有官方限额字段也能看到本机用量变化。它也可以管理 Codex 的中转站/API 配置，让你不用手动编辑 `~/.codex/config.toml`，就能在官方路线和中转路线之间切换；需要时还可以把历史会话的 provider 标记同步到当前路线。
+Codex Toolkit 会读取本地 Codex 会话日志，把 token 使用情况整理成一个紧凑的桌面仪表盘，并按 provider 汇总历史 token。当 Codex 使用中转站 provider 时，应用会根据本地 `token_count` 事件重建 24 小时和 7 天 token 用量趋势，即使没有官方限额字段也能看到本机用量变化。它也可以管理 Codex 的中转站/API 配置，让你不用手动编辑 `~/.codex/config.toml`，就能在官方路线、中转路线和本地路由器路线之间切换；需要时还可以把历史会话的 provider 标记同步到当前路线。
+
+本地路由器模式会让 Codex 继续使用 Responses API 连接 `http://127.0.0.1:15721/v1`，再由 Codex Toolkit 在本机把请求转换到 Chat Completions 上游，因此可以使用 DeepSeek、SiliconFlow、OpenRouter 等兼容 `/chat/completions` 的供应商。
 
 当前主要在 Windows 上测试。macOS 兼容性暂未充分验证，欢迎反馈问题。
 
@@ -65,7 +67,7 @@ npm run build
 | Token 仪表盘 | 当前会话总量、最近回复用量、趋势视图、上下文窗口大小、按 provider 汇总 token |
 | 限额视图 | 基于本地 Codex 会话日志展示 5 小时和每周使用窗口 |
 | 中转站用量趋势 | 使用中转站 provider 时，基于本地 `token_count` 事件重建 24 小时逐小时 token 桶和 7 天 token 总量 |
-| 中转站管理 | Provider ID、API Base URL、API Key、应用配置、恢复官方、应用并重启 |
+| 中转站管理 | Provider ID、API Base URL、API Key、直连 Responses、本地路由器、Chat Completions 上游、Provider 自检、应用配置、恢复官方、应用并重启 |
 | 历史同步 | 查看各 provider 的历史记录数量，将会话文件和本地 SQLite 历史同步到当前 provider |
 | 桌面体验 | 托盘最小化/恢复、开机自启、贴边吸附、隐私模式 |
 | 界面 | 中英双语菜单切换、日间/夜间主题切换 |
@@ -107,6 +109,42 @@ config.toml.codexviewer-backup-YYYYMMDD-HHMMSS
 ```
 
 恢复官方会移除当前工具管理的 provider、默认 `moapi` provider，以及旧版本遗留的 `CodexViewerRelay` provider。
+
+### 本地路由器模式
+
+当上游供应商只兼容 OpenAI Chat Completions，而不直接支持 Codex 使用的 Responses API 时，可以使用本地路由器模式。
+
+在本地路由器模式下，Codex 配置仍然写成 Responses provider，并指向本机地址：
+
+```toml
+model_provider = "gui"
+
+[model_providers.gui]
+name = "gui"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "http://127.0.0.1:15721/v1"
+experimental_bearer_token = "codex-toolkit-local-router"
+```
+
+真实上游地址、API Key 和上游模型保存在 Codex Toolkit 的 provider 配置中，不会直接写入 Codex 的本地配置。例如：
+
+```text
+Codex -> http://127.0.0.1:15721/v1/responses
+Codex Toolkit -> https://api.siliconflow.cn/v1/chat/completions
+上游模型 -> deepseek-ai/DeepSeek-V3.2
+```
+
+本地路由器会处理：
+
+- Responses 请求转 Chat Completions 请求
+- Chat Completions 流式输出转 Responses SSE
+- `reasoning_content`、`reasoning` 和 `<think>...</think>`
+- 非流式和流式 tool calls
+- `function_call_output` 工具结果回传
+- `response.completed`、`response.failed`、`incomplete` 和上游错误规范化
+
+中转站面板里的“测试 Provider”按钮可以在不修改 Codex 配置的情况下测试当前 provider，包括本地路由器健康检查、上游非流式请求和上游流式请求。
 
 ## 历史同步
 
@@ -186,7 +224,7 @@ node --check $tmp
 
 最新修复版本：
 
-- `v1.1.2`：修复安装版启动后用量不会自动刷新的问题，并新增中转站模式下基于本地 token 桶计算的 24 小时用量统计。
+- `v1.2.0`：新增本地路由器模式，可让 Codex 通过 Responses API 使用 Chat Completions 上游，并支持 reasoning、tool calls、工具结果回传和 Provider 自检。
 
 发布示例：
 

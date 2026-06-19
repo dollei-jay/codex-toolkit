@@ -510,6 +510,47 @@ body.dark .select-input {
   color: var(--text-sub);
 }
 
+.provider-switcher {
+  display: grid;
+  gap: 6px;
+}
+
+.provider-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.provider-chip,
+.provider-chip-empty {
+  min-height: 28px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chip-bg);
+  color: inherit;
+  font-size: 10px;
+}
+
+.provider-chip {
+  cursor: pointer;
+}
+
+.provider-chip:hover,
+.provider-chip.is-selected,
+.provider-chip.is-current {
+  border-color: var(--blue);
+}
+
+.provider-chip.is-current {
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.provider-chip-empty {
+  color: var(--text-sub);
+}
+
 .history-provider-row strong,
 .history-provider-row span {
   overflow: hidden;
@@ -592,6 +633,7 @@ body.dark .relay-btn-danger {
   color: var(--text-sub);
   font-size: 10px;
   line-height: 1.35;
+  white-space: pre-line;
 }
 
 .relay-action-status.is-error {

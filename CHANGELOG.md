@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.0 - 2026-06-19
+
+### Local router gateway
+
+- Added a Codex local router mode that keeps Codex on the Responses API while routing requests to Chat Completions upstream providers.
+- Added explicit upstream wire API metadata for relay profiles, defaulting local router providers to `chat_completions`.
+- Added local router health output for `http://127.0.0.1:15721/health` and a readable GET response for `/v1/responses`.
+- Added Responses-to-Chat request conversion for instructions, input, reasoning effort, tools, tool calls, and tool result round trips.
+- Added Chat-to-Responses conversion for text, reasoning, inline `<think>` blocks, usage, finish reasons, normalized upstream errors, and streaming failure events.
+- Added non-streaming and streaming Chat tool call conversion into Responses function-call output items.
+
+### Provider testing
+
+- Added a relay panel "Test provider" action that checks local router health plus upstream non-streaming and streaming requests without changing Codex config.
+- Updated relay route status text to show the Responses-to-Chat-Completions path when local router mode is active.
+
+### Documentation
+
+- Documented local router mode in both Chinese and English READMEs, including the Codex-facing localhost configuration and Chat Completions upstream behavior.
+
 ## 1.1.2 - 2026-06-14
 
 ### Usage statistics

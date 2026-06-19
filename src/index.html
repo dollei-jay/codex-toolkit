@@ -134,6 +134,14 @@
               </label>
             </div>
 
+            <div class="provider-switcher">
+              <div class="history-provider-head">
+                <span data-i18n="savedProviders">Saved providers</span>
+                <span data-i18n="selectProviderHint">Click to load</span>
+              </div>
+              <div id="relay-provider-list" class="provider-chip-list" aria-live="polite"></div>
+            </div>
+
             <label class="settings-field" for="relay-provider-id-input">
               <span class="field-label" data-i18n="providerIdLabel">Provider ID</span>
               <input
@@ -143,6 +151,14 @@
                 placeholder="moapi"
                 spellcheck="false"
               />
+            </label>
+
+            <label class="settings-field" for="relay-route-mode-select">
+              <span class="field-label" data-i18n="routeModeLabel">Route mode</span>
+              <select id="relay-route-mode-select" class="text-input">
+                <option value="direct" data-i18n="routeModeDirect">Direct Responses</option>
+                <option value="local_router" data-i18n="routeModeLocalRouter">Local router</option>
+              </select>
             </label>
 
             <label class="settings-field" for="relay-base-url-input">
@@ -171,12 +187,23 @@
             </label>
 
             <label class="settings-field" for="relay-test-model-input">
-              <span class="field-label" data-i18n="testModelLabel">Test model</span>
+              <span class="field-label" data-i18n="testModelLabel">Codex model</span>
               <input
                 id="relay-test-model-input"
                 class="text-input"
                 type="text"
-                placeholder="gpt-5-mini"
+                placeholder="gpt-5.5"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="settings-field" for="relay-upstream-model-input">
+              <span class="field-label" data-i18n="upstreamModelLabel">Upstream model</span>
+              <input
+                id="relay-upstream-model-input"
+                class="text-input"
+                type="text"
+                placeholder="deepseek-chat"
                 spellcheck="false"
               />
             </label>
@@ -194,6 +221,7 @@
 
             <div class="relay-actions">
               <button id="relay-clear-btn" class="relay-btn relay-btn-danger relay-btn-wide" type="button" data-i18n="restoreOfficial">Restore official</button>
+              <button id="relay-test-btn" class="relay-btn" type="button" data-i18n="testProvider">Test provider</button>
               <button id="relay-apply-btn" class="relay-btn" type="button" data-i18n="applyToCodex">Apply to Codex</button>
               <button id="relay-restart-btn" class="relay-btn relay-btn-primary" type="button" data-i18n="applyRestart">Apply & Restart Codex</button>
               <!-- Plugin unlock launcher is hidden while CDP injection reliability is being validated. -->

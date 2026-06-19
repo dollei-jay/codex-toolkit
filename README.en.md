@@ -20,7 +20,9 @@
   <a href="#development">Development</a>
 </p>
 
-Codex Toolkit reads local Codex session logs and turns token activity into a compact desktop dashboard, including token totals grouped by provider. When Codex runs through a relay provider, the app reconstructs 24-hour and 7-day token usage trends from local `token_count` events so usage stays visible even when official rate-limit fields are unavailable. It also manages Codex relay/API configuration, so you can switch between the official route and a relay endpoint without hand-editing `~/.codex/config.toml`. When needed, it can sync historical session provider metadata to your current route.
+Codex Toolkit reads local Codex session logs, turns token usage into a compact desktop dashboard, and summarizes historical usage by provider. When Codex uses a relay-backed provider, the app rebuilds 24-hour and 7-day token trends from local `token_count` events, so you can still inspect local usage even when official quota fields are unavailable. It can also manage Codex API/provider configuration, so you can switch between the official route, direct relay routes, and the local router route without editing `~/.codex/config.toml` by hand. When needed, it can also sync historical session provider markers to the current route.
+
+Local router mode lets Codex keep speaking the Responses API to `http://127.0.0.1:15721/v1`, while Codex Toolkit converts requests locally to a Chat Completions upstream. This makes DeepSeek, SiliconFlow, OpenRouter, and other `/chat/completions`-compatible providers usable from Codex.
 
 Currently tested mainly on Windows. macOS compatibility has not been fully verified yet, and issue reports are welcome.
 
@@ -65,7 +67,7 @@ Build outputs are generated under:
 | Token dashboard | Current session totals, last response usage, trend views, context window size, provider token totals |
 | Rate-limit view | 5-hour and weekly usage windows based on local Codex session logs |
 | Relay token trends | 24-hour hourly token buckets and 7-day token totals reconstructed from local `token_count` events when using a relay provider |
-| Relay management | Provider ID, API Base URL, API Key, apply, restore official, apply and restart |
+| Relay management | Provider ID, API Base URL, API Key, direct Responses route, local router, Chat Completions upstreams, provider self-test, apply config, restore official, apply and restart |
 | History sync | Review provider history counts and sync session files plus local SQLite history to the current provider |
 | Desktop behavior | Tray minimize/restore, login autostart, edge snapping, privacy mode |
 | UI | English/Chinese menu switching and day/night theme toggle |
@@ -107,6 +109,42 @@ config.toml.codexviewer-backup-YYYYMMDD-HHMMSS
 ```
 
 Restore official removes the active toolkit-managed provider, the default `moapi` provider, and the legacy `CodexViewerRelay` provider if present.
+
+### Local Router Mode
+
+Use local router mode when an upstream provider is OpenAI Chat Completions compatible but does not directly support the Responses API expected by Codex.
+
+In local router mode, Codex is still configured as a Responses provider and points to the local gateway:
+
+```toml
+model_provider = "gui"
+
+[model_providers.gui]
+name = "gui"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "http://127.0.0.1:15721/v1"
+experimental_bearer_token = "codex-toolkit-local-router"
+```
+
+The real upstream URL, API key, and upstream model stay in the Codex Toolkit provider profile instead of being written directly into Codex config. For example:
+
+```text
+Codex -> http://127.0.0.1:15721/v1/responses
+Codex Toolkit -> https://api.siliconflow.cn/v1/chat/completions
+Upstream model -> deepseek-ai/DeepSeek-V3.2
+```
+
+The local router handles:
+
+- Responses request to Chat Completions request conversion
+- Chat Completions streaming output to Responses SSE conversion
+- `reasoning_content`, `reasoning`, and `<think>...</think>`
+- non-streaming and streaming tool calls
+- `function_call_output` tool result round trips
+- `response.completed`, `response.failed`, `incomplete`, and normalized upstream errors
+
+The "Test provider" button in the relay panel tests the current provider without changing Codex config, including local router health, upstream non-stream requests, and upstream streaming requests.
 
 ## History Sync
 
@@ -188,7 +226,7 @@ This repository includes two GitHub Actions workflows:
 
 Latest fix release:
 
-- `v1.1.2`: fixes installed-app startup so usage refresh runs automatically, and adds relay-mode 24-hour usage statistics based on local token buckets.
+- `v1.2.0`: adds local router mode so Codex can use Chat Completions upstreams through the Responses API, including reasoning, tool calls, tool result round trips, and provider self-tests.
 
 Example release flow:
 

@@ -26,10 +26,12 @@ const summaryModeSelect = document.getElementById('summary-mode-select');
 const relayEnabledToggle = document.getElementById('relay-enabled-toggle');
 const relayRouteStatus = document.getElementById('relay-route-status');
 const relayProviderIdInput = document.getElementById('relay-provider-id-input');
+const relayRouteModeSelect = document.getElementById('relay-route-mode-select');
 const relayBaseUrlInput = document.getElementById('relay-base-url-input');
 const relayApiKeyInput = document.getElementById('relay-api-key-input');
 const relayKeyVisibility = document.getElementById('relay-key-visibility');
 const relayTestModelInput = document.getElementById('relay-test-model-input');
+const relayUpstreamModelInput = document.getElementById('relay-upstream-model-input');
 const relayStatusRoute = document.getElementById('relay-status-route');
 const relayStatusConfig = document.getElementById('relay-status-config');
 const relayStatusCodex = document.getElementById('relay-status-codex');
@@ -38,7 +40,9 @@ const relayActionStatus = document.getElementById('relay-action-status');
 const relayApplyBtn = document.getElementById('relay-apply-btn');
 const relayRestartBtn = document.getElementById('relay-restart-btn');
 const relayClearBtn = document.getElementById('relay-clear-btn');
+const relayTestBtn = document.getElementById('relay-test-btn');
 const pluginUnlockBtn = document.getElementById('plugin-unlock-btn');
+const relayProviderList = document.getElementById('relay-provider-list');
 const historySyncProvider = document.getElementById('history-sync-provider');
 const historyProvider = document.getElementById('history-provider');
 const historyRolloutPending = document.getElementById('history-rollout-pending');
@@ -106,6 +110,7 @@ const SUMMARY_MODE_STORAGE_KEY = 'codexviewer:summary-mode';
 const PRIVACY_MODE_STORAGE_KEY = 'codexviewer:privacy-mode';
 const LANGUAGE_STORAGE_KEY = 'codexviewer:language';
 const RELAY_LAST_APPLY_STORAGE_KEY = 'codexviewer:relay-last-apply';
+const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const SNAP_THRESHOLD = 24;
 const COLLAPSED_HEIGHT = 496;
 const EXPANDED_HEIGHT = 760;
@@ -120,6 +125,7 @@ let initialSnapshotRequested = false;
 let currentLanguage = 'en';
 let currentContextKind = 'plugin';
 let currentContextEntries = null;
+let selectedRelayProvider = null;
 let selectedContextEntry = null;
 
 async function loadAppVersion() {
@@ -164,11 +170,15 @@ const I18N = {
     relayNotConfigured: 'Relay not configured',
     relayActive: 'Relay active',
     providerIdLabel: 'Provider ID',
+    routeModeLabel: 'Route mode',
+    routeModeDirect: 'Direct Responses',
+    routeModeLocalRouter: 'Local router',
     baseUrlLabel: 'API Base URL',
     apiKeyLabel: 'API Key',
     show: 'Show',
     hide: 'Hide',
-    testModelLabel: 'Test model',
+    testModelLabel: 'Codex model',
+    upstreamModelLabel: 'Upstream model',
     route: 'Route',
     config: 'Config',
     codex: 'Codex',
@@ -177,6 +187,10 @@ const I18N = {
     applyToCodex: 'Apply to Codex',
     applyRestart: 'Apply & Restart Codex',
     restoreOfficial: 'Restore official',
+    testProvider: 'Test provider',
+    testingProvider: 'Testing provider...',
+    providerTestPassed: 'Provider test passed',
+    providerTestFailed: 'Provider test failed',
     historySyncTitle: 'History sync',
     targetProvider: 'Provider',
     rolloutPending: 'Pending files',
@@ -185,6 +199,10 @@ const I18N = {
     refreshStatus: 'Refresh status',
     syncHistory: 'Sync history',
     currentProviderBadge: 'Current',
+    savedProviders: 'Saved providers',
+    selectProviderHint: 'Click to load',
+    providerSelected: (provider) => `${provider} loaded into relay settings.`,
+    officialProviderSelected: 'openai loaded. Apply restore official if you want to switch back.',
     noProviderHistory: 'No provider history found',
     allProviderHistory: 'All provider records',
     historyRecordColumns: 'Total / files / DB',
@@ -283,7 +301,8 @@ const I18N = {
     invalidProviderIdError: 'Provider ID can only contain letters, numbers, underscore and hyphen.',
     relayConfiguredFallback: 'configured relay',
     official: 'Official',
-    relay: 'Relay'
+    relay: 'Relay',
+    localRouter: 'Local router'
   },
   zh: {
     waiting: '等待',
@@ -315,11 +334,15 @@ const I18N = {
     relayNotConfigured: '中转站未配置',
     relayActive: '中转站已启用',
     providerIdLabel: 'Provider ID',
+    routeModeLabel: '路由模式',
+    routeModeDirect: '直连 Responses',
+    routeModeLocalRouter: '本地路由器',
     baseUrlLabel: 'API Base URL',
     apiKeyLabel: 'API Key',
     show: '显示',
     hide: '隐藏',
-    testModelLabel: '测试模型',
+    testModelLabel: 'Codex 模型',
+    upstreamModelLabel: '上游模型',
     route: '路由',
     config: '配置',
     codex: 'Codex',
@@ -328,6 +351,10 @@ const I18N = {
     applyToCodex: '应用到 Codex',
     applyRestart: '应用并重启 Codex',
     restoreOfficial: '恢复官方端点',
+    testProvider: '测试 Provider',
+    testingProvider: '正在测试 Provider...',
+    providerTestPassed: 'Provider 测试通过',
+    providerTestFailed: 'Provider 测试失败',
     historySyncTitle: '历史同步',
     targetProvider: 'Provider',
     rolloutPending: '待同步文件',
@@ -336,6 +363,10 @@ const I18N = {
     refreshStatus: '刷新状态',
     syncHistory: '同步历史',
     currentProviderBadge: '当前',
+    savedProviders: '已有 Provider',
+    selectProviderHint: '点击回显',
+    providerSelected: (provider) => `已将 ${provider} 回显到中转站配置。`,
+    officialProviderSelected: '已回显 openai。需要切回官方时点击恢复官方端点。',
     noProviderHistory: '没有找到 provider 历史',
     allProviderHistory: '所有 Provider 记录',
     historyRecordColumns: '总数 / 文件 / 数据库',
@@ -412,7 +443,8 @@ const I18N = {
     invalidProviderIdError: 'Provider ID 只能包含英文、数字、下划线和连字符。',
     relayConfiguredFallback: '已配置中转站',
     official: '官方',
-    relay: '中转站'
+    relay: '中转站',
+    localRouter: '本地路由器'
   }
 };
 
@@ -727,32 +759,46 @@ function getRelayFormSettings() {
   return {
     enabled: relayEnabledToggle.checked,
     providerId: relayProviderIdInput.value.trim() || 'moapi',
+    routeMode: relayRouteModeSelect.value || 'direct',
     baseUrl: relayBaseUrlInput.value.trim(),
     apiKey: relayApiKeyInput.value.trim(),
-    testModel: relayTestModelInput.value.trim() || null
+    testModel: relayTestModelInput.value.trim() || DEFAULT_CODEX_MODEL,
+    localPort: 15721,
+    upstreamModel: relayUpstreamModelInput.value.trim() || null,
+    upstreamWireApi: relayRouteModeSelect.value === 'local_router' ? 'chat_completions' : 'responses'
   };
 }
 
 function setRelayFormSettings(settings) {
   relayEnabledToggle.checked = Boolean(settings?.enabled);
   relayProviderIdInput.value = settings?.providerId || 'moapi';
+  relayRouteModeSelect.value = settings?.routeMode || 'direct';
   relayBaseUrlInput.value = settings?.baseUrl || '';
   relayApiKeyInput.value = settings?.apiKey || '';
-  relayTestModelInput.value = settings?.testModel || '';
+  relayTestModelInput.value = settings?.testModel || DEFAULT_CODEX_MODEL;
+  relayUpstreamModelInput.value = settings?.upstreamModel || '';
   syncRelayEnabledState();
 }
 
 function syncRelayEnabledState() {
   const enabled = relayEnabledToggle.checked;
   relayProviderIdInput.disabled = !enabled;
+  relayRouteModeSelect.disabled = !enabled;
   relayBaseUrlInput.disabled = !enabled;
   relayApiKeyInput.disabled = !enabled;
   relayTestModelInput.disabled = !enabled;
-  relayRouteStatus.textContent = enabled ? relayBaseUrlInput.value.trim() || t('relayNotConfigured') : t('officialEndpoint');
+  relayUpstreamModelInput.disabled = !enabled || relayRouteModeSelect.value !== 'local_router';
+  if (!enabled) {
+    relayRouteStatus.textContent = t('officialEndpoint');
+  } else if (relayRouteModeSelect.value === 'local_router') {
+    relayRouteStatus.textContent = `127.0.0.1:15721 responses -> chat_completions -> ${relayBaseUrlInput.value.trim() || t('relayNotConfigured')}`;
+  } else {
+    relayRouteStatus.textContent = relayBaseUrlInput.value.trim() || t('relayNotConfigured');
+  }
 }
 
 function setRelayBusy(isBusy) {
-  [relayApplyBtn, relayRestartBtn, relayClearBtn, pluginUnlockBtn].forEach((button) => {
+  [relayApplyBtn, relayRestartBtn, relayClearBtn, relayTestBtn, pluginUnlockBtn].forEach((button) => {
     if (button) {
       button.disabled = isBusy;
     }
@@ -762,6 +808,19 @@ function setRelayBusy(isBusy) {
 function setRelayActionStatus(message, isError = false) {
   relayActionStatus.textContent = message;
   relayActionStatus.classList.toggle('is-error', isError);
+}
+
+function formatRelaySelfTest(result) {
+  const checks = result?.checks || [];
+  const lines = checks.map((check) => {
+    const icon = check.ok ? 'OK' : 'FAIL';
+    const latency = check.latencyMs == null ? '' : ` ${check.latencyMs}ms`;
+    return `${icon} ${check.name}${latency}: ${check.message}`;
+  });
+  return [
+    `${result?.ok ? t('providerTestPassed') : t('providerTestFailed')}: ${result?.providerId || '--'} | ${result?.upstreamWireApi || '--'} | ${result?.upstreamModel || '--'}`,
+    ...lines
+  ].join('\n');
 }
 
 function setHistoryBusy(isBusy) {
@@ -779,11 +838,18 @@ function renderRelayStatus(status) {
   currentRelayStatus = status || null;
   syncRelayFormFromStatus(status);
   relayStatusRoute.textContent = status?.route === 'relay' ? t('relay') : t('official');
+  if (status?.routeMode === 'local_router') {
+    relayStatusRoute.textContent = t('localRouter');
+  }
   relayStatusConfig.textContent = status?.configured ? t('configured') : t('notApplied');
   relayStatusConfig.title = status?.configPath || '';
   relayStatusCodex.textContent = status?.codexRunning ? t('running') : t('notRunning');
   relayRouteStatus.textContent =
-    status?.route === 'relay' ? status?.baseUrl || t('relayActive') : t('officialEndpoint');
+    status?.route === 'relay'
+      ? status?.routeMode === 'local_router'
+        ? `127.0.0.1:15721 responses -> ${status?.upstreamWireApi || 'chat_completions'} -> ${status?.upstreamBaseUrl || t('relayActive')}`
+        : status?.baseUrl || t('relayActive')
+      : t('officialEndpoint');
   renderSummaryTokenLabel();
   if (currentSnapshot) {
     const routeLabel = getUsageRouteLabel();
@@ -806,7 +872,10 @@ function syncRelayFormFromStatus(status) {
 
   relayEnabledToggle.checked = true;
   relayProviderIdInput.value = status.providerId || relayProviderIdInput.value || 'moapi';
-  if (status.baseUrl) {
+  relayRouteModeSelect.value = status.routeMode || relayRouteModeSelect.value || 'direct';
+  if (status.upstreamBaseUrl) {
+    relayBaseUrlInput.value = status.upstreamBaseUrl;
+  } else if (status.baseUrl) {
     relayBaseUrlInput.value = status.baseUrl;
   }
   syncRelayEnabledState();
@@ -839,6 +908,7 @@ async function refreshRelayStatus() {
   try {
     const status = await invoke('relay_status');
     renderRelayStatus(status);
+    loadRelayProviders();
     loadHistoryStatus();
   } catch (error) {
     setRelayActionStatus(String(error), true);
@@ -871,12 +941,13 @@ function renderHistoryProviderList(summaries) {
   }
 
   summaries.forEach((summary) => {
+    const provider = summary.provider || '';
     const row = document.createElement('div');
     row.className = 'history-provider-row';
     row.classList.toggle('is-current', Boolean(summary.isCurrent));
 
     const name = document.createElement('strong');
-    name.textContent = summary.provider || '(missing)';
+    name.textContent = provider || '(missing)';
 
     const counts = document.createElement('span');
     const totalFiles = summary.totalRollout || 0;
@@ -892,6 +963,85 @@ function renderHistoryProviderList(summaries) {
     }
     row.appendChild(counts);
     historyProviderList.appendChild(row);
+  });
+}
+
+function renderRelayProviderList(providers) {
+  relayProviderList.innerHTML = '';
+  if (!providers.length) {
+    const empty = document.createElement('span');
+    empty.className = 'provider-chip-empty';
+    empty.textContent = t('noProviderHistory');
+    relayProviderList.appendChild(empty);
+    return;
+  }
+
+  providers.forEach((provider) => {
+    const providerId = provider.providerId || provider.provider_id || '';
+    if (!providerId) {
+      return;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'provider-chip';
+    button.classList.toggle('is-current', Boolean(provider.isCurrent || provider.is_current));
+    button.classList.toggle('is-selected', providerId === selectedRelayProvider);
+    button.textContent = providerId;
+    button.addEventListener('click', () => {
+      selectRelayProvider(providerId);
+    });
+    relayProviderList.appendChild(button);
+  });
+}
+
+async function loadRelayProviders() {
+  try {
+    const providers = await invoke('list_relay_providers');
+    renderRelayProviderList(providers || []);
+  } catch (error) {
+    relayProviderList.innerHTML = '';
+    const empty = document.createElement('span');
+    empty.className = 'provider-chip-empty';
+    empty.textContent = String(error);
+    relayProviderList.appendChild(empty);
+  }
+}
+
+async function selectRelayProvider(provider) {
+  const normalizedProvider = (provider || '').trim();
+  if (!normalizedProvider || normalizedProvider === '(missing)') {
+    return;
+  }
+
+  selectedRelayProvider = normalizedProvider;
+
+  if (normalizedProvider.toLowerCase() === 'openai') {
+    relayEnabledToggle.checked = false;
+    relayProviderIdInput.value = 'openai';
+    relayRouteModeSelect.value = 'direct';
+    syncRelayEnabledState();
+    setRelayActionStatus(t('officialProviderSelected'));
+  } else {
+    try {
+      const settings = await invoke('load_relay_provider_settings', { providerId: normalizedProvider });
+      setRelayFormSettings(settings);
+    } catch {
+      relayEnabledToggle.checked = true;
+      relayProviderIdInput.value = normalizedProvider;
+      if (!relayTestModelInput.value.trim()) {
+        relayTestModelInput.value = DEFAULT_CODEX_MODEL;
+      }
+      if (relayRouteModeSelect.value === 'local_router' && !relayUpstreamModelInput.value.trim()) {
+        relayUpstreamModelInput.value = normalizedProvider.toLowerCase() === 'deepseek' ? 'deepseek-chat' : normalizedProvider;
+      }
+      syncRelayEnabledState();
+    }
+    setRelayActionStatus(t('providerSelected', normalizedProvider));
+  }
+
+  Array.from(relayProviderList.querySelectorAll('.provider-chip')).forEach((row) => {
+    const rowProvider = row.textContent || '';
+    row.classList.toggle('is-selected', rowProvider === normalizedProvider);
   });
 }
 
@@ -1193,6 +1343,12 @@ async function applyRelayConfig() {
   setRelayBusy(true);
   setRelayActionStatus(t('applyingRelay'));
   try {
+    if (!settings.enabled) {
+      const result = await invoke('clear_relay_config');
+      setRelayActionStatus(result.message || 'Official endpoint restored.');
+      await refreshRelayStatus();
+      return;
+    }
     validateRelayForm(settings);
     const saved = await invoke('save_relay_settings', { settings });
     setRelayFormSettings(saved);
@@ -1213,6 +1369,13 @@ async function applyRelayConfigAndRestart() {
   setRelayBusy(true);
   setRelayActionStatus(t('applyingRestart'));
   try {
+    if (!settings.enabled) {
+      const clearResult = await invoke('clear_relay_config');
+      const restartResult = await invoke('restart_codex_app');
+      setRelayActionStatus(`${clearResult.message} ${restartResult.message}`);
+      await loadRelaySettings();
+      return;
+    }
     validateRelayForm(settings);
     const result = await invoke('apply_relay_config_and_restart', { settings });
     localStorage.setItem(RELAY_LAST_APPLY_STORAGE_KEY, String(Date.now()));
@@ -1233,6 +1396,21 @@ async function clearRelayConfig() {
     const result = await invoke('clear_relay_config');
     setRelayActionStatus(result.message || 'Official endpoint restored.');
     await refreshRelayStatus();
+  } catch (error) {
+    setRelayActionStatus(String(error), true);
+  } finally {
+    setRelayBusy(false);
+  }
+}
+
+async function testRelayProvider() {
+  const settings = getRelayFormSettings();
+  setRelayBusy(true);
+  setRelayActionStatus(t('testingProvider'));
+  try {
+    validateRelayForm(settings);
+    const result = await invoke('test_relay_provider', { settings });
+    setRelayActionStatus(formatRelaySelfTest(result), !result.ok);
   } catch (error) {
     setRelayActionStatus(String(error), true);
   } finally {
@@ -1645,6 +1823,24 @@ relayEnabledToggle.addEventListener('change', syncRelayEnabledState);
 
 relayProviderIdInput.addEventListener('input', syncRelayEnabledState);
 
+relayRouteModeSelect.addEventListener('change', () => {
+  if (relayRouteModeSelect.value === 'local_router') {
+    if (!relayBaseUrlInput.value.trim()) {
+      relayBaseUrlInput.value = 'https://api.deepseek.com/v1';
+    }
+    if (!relayUpstreamModelInput.value.trim()) {
+      relayUpstreamModelInput.value = 'deepseek-chat';
+    }
+    if (!relayTestModelInput.value.trim()) {
+      relayTestModelInput.value = DEFAULT_CODEX_MODEL;
+    }
+    if (!relayProviderIdInput.value.trim() || relayProviderIdInput.value.trim() === 'moapi') {
+      relayProviderIdInput.value = 'deepseek';
+    }
+  }
+  syncRelayEnabledState();
+});
+
 relayBaseUrlInput.addEventListener('input', syncRelayEnabledState);
 
 relayKeyVisibility.addEventListener('click', () => {
@@ -1663,6 +1859,10 @@ relayRestartBtn.addEventListener('click', () => {
 
 relayClearBtn.addEventListener('click', () => {
   clearRelayConfig();
+});
+
+relayTestBtn?.addEventListener('click', () => {
+  testRelayProvider();
 });
 
 pluginUnlockBtn?.addEventListener('click', () => {

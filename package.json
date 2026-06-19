@@ -1,6 +1,6 @@
 {
   "name": "codex-toolkit",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "A lightweight Codex desktop toolkit for usage monitoring, relay configuration, and app restart workflows.",
   "scripts": {
     "dev": "tauri dev",

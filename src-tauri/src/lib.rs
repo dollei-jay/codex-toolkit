@@ -17,6 +17,7 @@ use tauri_plugin_autostart::MacosLauncher;
 
 mod context_config;
 mod history_sync;
+mod local_router;
 mod plugin_unlock;
 mod relay_config;
 
@@ -622,6 +623,13 @@ fn load_relay_settings() -> Result<relay_config::RelaySettings, String> {
 }
 
 #[tauri::command]
+fn load_relay_provider_settings(
+    provider_id: String,
+) -> Result<relay_config::RelaySettings, String> {
+    relay_config::load_relay_settings_for_provider_default(provider_id)
+}
+
+#[tauri::command]
 fn save_relay_settings(
     settings: relay_config::RelaySettings,
 ) -> Result<relay_config::RelaySettings, String> {
@@ -632,7 +640,16 @@ fn save_relay_settings(
 fn apply_relay_config(
     settings: relay_config::RelaySettings,
 ) -> Result<relay_config::RelayApplyResult, String> {
-    relay_config::apply_relay_config_to_default(settings)
+    let result = relay_config::apply_relay_config_to_default(settings.clone())?;
+    local_router::ensure_router_for_settings(&settings)?;
+    Ok(result)
+}
+
+#[tauri::command]
+fn test_relay_provider(
+    settings: relay_config::RelaySettings,
+) -> Result<relay_config::RelaySelfTestResult, String> {
+    relay_config::test_relay_provider(settings)
 }
 
 #[tauri::command]
@@ -646,6 +663,11 @@ fn relay_status() -> Result<relay_config::RelayStatus, String> {
 }
 
 #[tauri::command]
+fn list_relay_providers() -> Result<Vec<relay_config::RelayProviderOption>, String> {
+    relay_config::list_relay_providers_from_default()
+}
+
+#[tauri::command]
 fn restart_codex_app() -> relay_config::RestartResult {
     relay_config::restart_codex_app()
 }
@@ -654,7 +676,11 @@ fn restart_codex_app() -> relay_config::RestartResult {
 fn apply_relay_config_and_restart(
     settings: relay_config::RelaySettings,
 ) -> Result<relay_config::ApplyAndRestartResult, String> {
-    relay_config::apply_relay_config_and_restart_default(settings)
+    let saved = relay_config::save_relay_settings_to_default(settings)?;
+    let apply = relay_config::apply_relay_config_to_default(saved.clone())?;
+    local_router::ensure_router_for_settings(&saved)?;
+    let restart = relay_config::restart_codex_app();
+    Ok(relay_config::ApplyAndRestartResult { apply, restart })
 }
 
 #[tauri::command]
@@ -757,6 +783,21 @@ pub fn run() {
 
             let _tray = tray_builder.build(app)?;
 
+            match relay_config::load_relay_settings_from_default() {
+                Ok(settings) => {
+                    if let Err(error) = local_router::ensure_router_for_settings(&settings) {
+                        local_router::log_router_startup_error(&format!(
+                            "router startup failed: {error}"
+                        ));
+                    }
+                }
+                Err(error) => {
+                    local_router::log_router_startup_error(&format!(
+                        "router settings load failed: {error}"
+                    ));
+                }
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_skip_taskbar(false);
 
@@ -776,10 +817,13 @@ pub fn run() {
             load_usage_snapshot,
             quit_app,
             load_relay_settings,
+            load_relay_provider_settings,
             save_relay_settings,
             apply_relay_config,
+            test_relay_provider,
             clear_relay_config,
             relay_status,
+            list_relay_providers,
             restart_codex_app,
             apply_relay_config_and_restart,
             history_sync_status,
